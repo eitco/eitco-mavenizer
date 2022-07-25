@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -26,10 +27,13 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 import de.eitco.mavenizer.ManifestAnalyzer.Attribute;
+import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
 
 
 public class Main {
 
+	private static final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
+	
 	public static void main(String[] args) throws IOException {
 		
 		var manifestAttributesInclude = List.of(
@@ -82,40 +86,19 @@ public class Main {
 						String jarName = path.getFileName().toString();
 						System.out.println(jarName);
 						
-//						for (var entry : manifest.get().getMainAttributes().entrySet()) {
-//							Attributes.Name keyName = ((Attributes.Name) entry.getKey());
-//							if (keyName.equals(Attributes.Name.MANIFEST_VERSION) || keyName.toString().equals("Archiver-Version")
-//									|| keyName.toString().equals("Import-Package") || keyName.toString().equals("Export-Package")
-//									|| keyName.toString().equals("Include-Resource")
-//									) {
-//								continue;
-//							}
-//							int minLength = 30;
-//							String keyString = entry.getKey() + ": ";
-//							int length = minLength - keyString.length();
-//							System.out.println("    " + keyString + " ".repeat(length < 0 ? 0 : length) + entry.getValue());
-//						}
+						var result = manifestAnalyzer.analyze(manifest.get());
+						var scoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoredValue.confidence).reversed();
 						
-						for (var entry : manifest.get().getMainAttributes().entrySet()) {
-							String attrName = ((Attributes.Name) entry.getKey()).toString();
-							Attribute attr = null;
-							try {
-								attr = Attribute.fromString(attrName);
-							} catch (IllegalArgumentException e) {
-								continue;
+						for (var uidComponent : MavenUidComponent.values()) {
+							
+							var resultList = result.get(uidComponent);
+							resultList.sort(scoreComparator);
+							
+							if (resultList.size() > 0) {
+								System.out.println("    " + uidComponent.name());
 							}
-							
-							String attrValue = (String) entry.getValue();
-							
-							System.out.println("    " + attrName + ":");
-							
-							var extractor = ManifestAnalyzer.groupIdExtractors.get(attr);
-							if (extractor != null) {
-								var candidates = extractor.getCandidates(attrValue);
-								
-								for (var candidate : candidates) {
-									System.out.println("        " + candidate);
-								}
+							for (ValueCandidate candidate : resultList) {
+								System.out.println("        " + rightPad(candidate.scoredValue.toString(), 25) + " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySource() + ")");
 							}
 						}
 					}
@@ -125,8 +108,48 @@ public class Main {
 				}
 		    });
 		}
+	}
+	
+	public static String rightPad(String str, int minLength) {
+		if (str.length() < minLength) {
+			int padLength = minLength - str.length();
+			return str + " ".repeat(padLength);
+		} else {
+			return str;
+		}
+	}
+	
+	public static enum MavenUidComponent {
+		GROUP_ID,
+		ARTIFACT_ID,
+		VERSION
+	}
+	
+	public static enum Analyzer {
+		MANIFEST("Manifest"),
+		POM("Pom"),
+		MAVEN_REPO_CHEK("Repo-Check");
 		
-
+		public final String displayName;
+		private Analyzer(String displayName) {
+			this.displayName = displayName;
+		}
+	}
+	
+	public static class ValueCandidate {
+		public ScoredValue scoredValue;
+		public Analyzer source;
+		public ScoredValueSource sourceDetails;
+		
+		public ValueCandidate(ScoredValue scoredValue, Analyzer source, ScoredValueSource sourceDetails) {
+			this.scoredValue = scoredValue;
+			this.source = source;
+			this.sourceDetails = sourceDetails;
+		}
+	}
+	
+	public static interface ScoredValueSource {
+		public String displaySource();
 	}
 	
 	public static ClassReader createClassReader(InputStream in) {
