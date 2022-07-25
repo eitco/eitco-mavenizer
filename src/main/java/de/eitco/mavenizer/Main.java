@@ -8,8 +8,10 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -26,6 +28,8 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
+import de.eitco.mavenizer.Main.MavenUidComponent;
+import de.eitco.mavenizer.Main.ValueCandidate;
 import de.eitco.mavenizer.ManifestAnalyzer.Attribute;
 import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
 
@@ -33,6 +37,7 @@ import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
 public class Main {
 
 	private static final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
+	private static final JarNameAnalyzer jarNameAnalyzer = new JarNameAnalyzer();
 	
 	public static void main(String[] args) throws IOException {
 		
@@ -86,21 +91,20 @@ public class Main {
 						String jarName = path.getFileName().toString();
 						System.out.println(jarName);
 						
-						var result = manifestAnalyzer.analyze(manifest.get());
-						var scoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoredValue.confidence).reversed();
+						var manifestResult = manifestAnalyzer.analyze(manifest.get());
+						var jarNameResult = jarNameAnalyzer.analyze(jarName);
 						
+						var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
+								MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
+								MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
+								MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
+								);
 						for (var uidComponent : MavenUidComponent.values()) {
-							
-							var resultList = result.get(uidComponent);
-							resultList.sort(scoreComparator);
-							
-							if (resultList.size() > 0) {
-								System.out.println("    " + uidComponent.name());
-							}
-							for (ValueCandidate candidate : resultList) {
-								System.out.println("        " + rightPad(candidate.scoredValue.toString(), 25) + " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySource() + ")");
-							}
+							result.get(uidComponent).addAll(manifestResult.get(uidComponent));
+							result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
 						}
+						
+						printAnalysisResults(result);
 					}
 					
 				} catch (IOException e) {
@@ -119,6 +123,31 @@ public class Main {
 		}
 	}
 	
+	public static void printAnalysisResults(Map<MavenUidComponent, List<ValueCandidate>> result) {
+		
+		var scoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoredValue.confidence).reversed();
+		
+		for (var uidComponent : MavenUidComponent.values()) {
+			
+			var resultList = result.get(uidComponent);
+			resultList.sort(scoreComparator);
+			
+			if (resultList.size() > 0) {
+				System.out.println("    " + uidComponent.name());
+			}
+			int valuePadding = 20;
+			for (ValueCandidate candidate : resultList) {
+				int valueLength = candidate.scoredValue.toString().length();
+				valuePadding = Math.max(valuePadding, valueLength);
+			}
+			for (ValueCandidate candidate : resultList) {
+				System.out.println("        "
+						+ rightPad(candidate.scoredValue.toString(), valuePadding + 2)
+						+ " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySource() + ")");
+			}
+		}
+	}
+	
 	public static enum MavenUidComponent {
 		GROUP_ID,
 		ARTIFACT_ID,
@@ -127,6 +156,7 @@ public class Main {
 	
 	public static enum Analyzer {
 		MANIFEST("Manifest"),
+		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
 		MAVEN_REPO_CHEK("Repo-Check");
 		
