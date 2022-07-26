@@ -32,12 +32,15 @@ import de.eitco.mavenizer.Main.MavenUidComponent;
 import de.eitco.mavenizer.Main.ValueCandidate;
 import de.eitco.mavenizer.ManifestAnalyzer.Attribute;
 import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
+import de.eitco.mavenizer.PomAnalyzer.FileBuffer;
+import de.eitco.mavenizer.PomAnalyzer.PomFileType;
 
 
 public class Main {
 
 	private static final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
 	private static final JarNameAnalyzer jarNameAnalyzer = new JarNameAnalyzer();
+	private static final PomAnalyzer pomAnalyzer = new PomAnalyzer();
 	
 	public static void main(String[] args) throws IOException {
 		
@@ -72,10 +75,33 @@ public class Main {
 		var jarsDir = Paths.get("./jars");
 		
 		try (Stream<Path> files = Files.list(jarsDir)){
-		    files.forEach(path -> {
-				try (var fin = new FileInputStream(path.toFile())) {
+		    files.forEach(jarPath -> {
+		    	if (!jarPath.getFileName().toString().endsWith(".jar")) {
+		    		return;
+		    	}
+		    	
+		    	String jarName = jarPath.getFileName().toString();
+				System.out.println(jarName);
+				
+				try (var fin = new FileInputStream(jarPath.toFile())) {
 					
+					List<FileBuffer> pomFiles = new ArrayList<>(1);
 					var manifest = readJarStream(fin, (entry, in) -> {
+						
+						var entryPath = Paths.get(entry.getName());
+						var filename = entryPath.getFileName().toString();
+						
+						if (!entry.isDirectory()) {
+							if (filename.equals(PomFileType.POM_XML.filename) || filename.equals(PomFileType.POM_PROPS.filename)) {
+								try {
+									var bytes = in.readAllBytes();
+									pomFiles.add(new FileBuffer(entryPath, bytes));
+								} catch (IOException e) {
+									throw new UncheckedIOException(e);
+								}
+							}
+						}
+						
 //						System.out.println(entry.getName());
 //						Path path = Paths.get(entry.getName());
 						
@@ -87,25 +113,23 @@ public class Main {
 //							System.out.println("  " + t.getClassName());
 //						}
 					});
-					if (manifest.isPresent()) {
-						String jarName = path.getFileName().toString();
-						System.out.println(jarName);
-						
-						var manifestResult = manifestAnalyzer.analyze(manifest.get());
-						var jarNameResult = jarNameAnalyzer.analyze(jarName);
-						
-						var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
-								MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
-								MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
-								MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
-								);
-						for (var uidComponent : MavenUidComponent.values()) {
-							result.get(uidComponent).addAll(manifestResult.get(uidComponent));
-							result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
-						}
-						
-						printAnalysisResults(result);
+					
+					var pomResult = pomAnalyzer.analyze(pomFiles);
+					var manifestResult = manifestAnalyzer.analyze(manifest);
+					var jarNameResult = jarNameAnalyzer.analyze(jarName);
+					
+					var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
+							MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
+							MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
+							MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
+							);
+					for (var uidComponent : MavenUidComponent.values()) {
+						result.get(uidComponent).addAll(pomResult.get(uidComponent));
+						result.get(uidComponent).addAll(manifestResult.get(uidComponent));
+						result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
 					}
+					
+					printAnalysisResults(result);
 					
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
@@ -143,15 +167,20 @@ public class Main {
 			for (ValueCandidate candidate : resultList) {
 				System.out.println("        "
 						+ rightPad(candidate.scoredValue.toString(), valuePadding + 2)
-						+ " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySource() + ")");
+						+ " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySourceDetails() + ")");
 			}
 		}
 	}
 	
 	public static enum MavenUidComponent {
-		GROUP_ID,
-		ARTIFACT_ID,
-		VERSION
+		GROUP_ID("groupId"),
+		ARTIFACT_ID("artifactId"),
+		VERSION("version");
+		
+		public final String xmlTagName;
+		private MavenUidComponent(String xmlTagName) {
+			this.xmlTagName = xmlTagName;
+		}
 	}
 	
 	public static enum Analyzer {
@@ -169,17 +198,28 @@ public class Main {
 	public static class ValueCandidate {
 		public ScoredValue scoredValue;
 		public Analyzer source;
-		public ScoredValueSource sourceDetails;
+		public ValueSource sourceDetails;
 		
-		public ValueCandidate(ScoredValue scoredValue, Analyzer source, ScoredValueSource sourceDetails) {
+		public ValueCandidate(ScoredValue scoredValue, Analyzer source, ValueSource sourceDetails) {
 			this.scoredValue = scoredValue;
 			this.source = source;
 			this.sourceDetails = sourceDetails;
 		}
 	}
 	
-	public static interface ScoredValueSource {
-		public String displaySource();
+	public static interface ValueSource {
+		public String displaySourceDetails();
+	}
+	
+	public static class StringValueSource implements ValueSource {
+		private String source;
+		public StringValueSource(String source) {
+			this.source = source;
+		}
+		@Override
+		public String displaySourceDetails() {
+			return source;
+		}
 	}
 	
 	public static ClassReader createClassReader(InputStream in) {

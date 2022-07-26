@@ -7,7 +7,8 @@ import java.util.regex.Matcher;
 
 import de.eitco.mavenizer.Main.Analyzer;
 import de.eitco.mavenizer.Main.MavenUidComponent;
-import de.eitco.mavenizer.Main.ScoredValueSource;
+import de.eitco.mavenizer.Main.StringValueSource;
+import de.eitco.mavenizer.Main.ValueSource;
 import de.eitco.mavenizer.Main.ValueCandidate;
 import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
 
@@ -21,7 +22,7 @@ public class JarNameAnalyzer {
 				MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
 				);
 		
-		ScoredValueSource valueSource = () -> "'" + jarFilename + "'";
+		ValueSource valueSource = new StringValueSource("'" + jarFilename + "'");
 		var nameWithoutExt = jarFilename.substring(0, jarFilename.lastIndexOf('.'));
 		
 		Matcher matcher = Helper.Regex.jarFilenameVersionSuffix.matcher(nameWithoutExt);

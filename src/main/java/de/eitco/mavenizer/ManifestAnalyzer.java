@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
@@ -12,18 +13,23 @@ import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.Main.Analyzer;
 import de.eitco.mavenizer.Main.MavenUidComponent;
-import de.eitco.mavenizer.Main.ScoredValueSource;
+import de.eitco.mavenizer.Main.ValueSource;
 import de.eitco.mavenizer.Main.ValueCandidate;
 
 public class ManifestAnalyzer {
 	
-	public Map<MavenUidComponent, List<ValueCandidate>> analyze(Manifest manifest) {
-
+	public Map<MavenUidComponent, List<ValueCandidate>> analyze(Optional<Manifest> manifestOptional) {
+		
 		var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
 				MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
 				MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
 				MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
 				);
+		
+		if (!manifestOptional.isPresent()) {
+			return result;
+		}
+		var manifest = manifestOptional.get();
 		
 		for (var entry : manifest.getMainAttributes().entrySet()) {
 			String attrName = ((Attributes.Name) entry.getKey()).toString();
@@ -64,7 +70,7 @@ public class ManifestAnalyzer {
 		return result;
 	}
 	
-	public static class ManifestEntry implements ScoredValueSource {
+	public static class ManifestEntry implements ValueSource {
 		private final Attribute attr;
 		private final String attrValue;
 		
@@ -73,7 +79,7 @@ public class ManifestAnalyzer {
 			this.attrValue = attrValue;
 		}
 		@Override
-		public String displaySource() {
+		public String displaySourceDetails() {
 			return attr.toString() + ": '" + attrValue + "'";
 		}
 	}

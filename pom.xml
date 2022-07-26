@@ -8,10 +8,16 @@
 	<maven.compiler.target>11</maven.compiler.target>
 	<maven.compiler.source>11</maven.compiler.source>
     
+    <version.maven>3.8.6</version.maven>
   	<version.asm>9.3</version.asm>
   </properties>
   
   <dependencies>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-model</artifactId>
+			<version>${version.maven}</version>
+		</dependency>
 		<dependency>
 			<groupId>org.ow2.asm</groupId>
 		    <artifactId>asm</artifactId>
