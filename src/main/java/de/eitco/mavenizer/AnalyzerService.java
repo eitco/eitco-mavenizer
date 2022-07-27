@@ -100,7 +100,10 @@ public class AnalyzerService {
 						result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
 					}
 					
+					System.out.println();
 					printAnalysisResults(result);
+					System.out.println();
+					System.out.println("-".repeat(80));
 					
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
@@ -181,7 +184,7 @@ public class AnalyzerService {
 		}
 		@Override
 		public String toString() {
-			return "[" + confidence + ", " + value + "]";
+			return StringUtil.leftPad(confidence + "", 2) + " | " + value;
 		}
 	}
 	

@@ -16,7 +16,6 @@ import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ScoredValue;
 import de.eitco.mavenizer.AnalyzerService.StringValueSource;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
-import de.eitco.mavenizer.AnalyzerService.ValueSource;
 
 public class ManifestAnalyzer {
 	
@@ -123,7 +122,7 @@ public class ManifestAnalyzer {
 			Attribute.Implementation_Title,
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 4, 2),
 			Attribute.Implementation_Vendor_Id,
-			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 8, 4),
+			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 6, 4),
 			Attribute.Automatic_Module_Name,
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 2, 4),
 			Attribute.Bundle_SymbolicName,

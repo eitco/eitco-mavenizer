@@ -69,7 +69,7 @@ public class PomAnalyzer {
 				var value = valueWithSourcesEntry.getKey();
 				if (isExpectedResults) {
 					// 1 result, high confidence
-					var confidence = 8;
+					var confidence = 10;
 					var source = new StringValueSource("pom.xml / pom.properties");
 					result.get(uidComponent).add(new ValueCandidate(new ScoredValue(value, confidence), Analyzer.POM, source));
 					break;
