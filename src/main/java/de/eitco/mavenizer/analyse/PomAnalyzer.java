@@ -1,10 +1,10 @@
 package de.eitco.mavenizer.analyse;
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,16 +62,19 @@ public class PomAnalyzer {
 		for (var uidComponent : MavenUidComponent.values()) {
 			Map<String, List<ValueSource>> valuesWithSources = foundValues.get(uidComponent);
 			
+			// we expect no differences between xml, properties and path and no missing values (null)
+			var isExpectedResults = valuesWithSources.size() == 1 && !valuesWithSources.containsKey(null);
+			
 			for (var valueWithSourcesEntry : valuesWithSources.entrySet()) {
 				var value = valueWithSourcesEntry.getKey();
-				if (valuesWithSources.size() == 1) {
-					// no differences between xml, properties and path -> high confidence
+				if (isExpectedResults) {
+					// 1 result, high confidence
 					var confidence = 8;
 					var source = new StringValueSource("pom.xml / pom.properties");
 					result.get(uidComponent).add(new ValueCandidate(new ScoredValue(value, confidence), Analyzer.POM, source));
 					break;
 				} else {
-					// differences -> we add each with low confidence, duplicates will be aggregated later anyway
+					// we add each result with low confidence, duplicates will be aggregated later anyway
 					var confidence = 2;
 					for (var source : valueWithSourcesEntry.getValue()) {
 						result.get(uidComponent).add(new ValueCandidate(new ScoredValue(value, confidence), Analyzer.POM, source));
@@ -83,6 +86,9 @@ public class PomAnalyzer {
 		return result;
 	}
 	
+	/**
+	 * @return inner maps can contain null entry if value could not be read from one or more sources
+	 */
 	private Map<MavenUidComponent, Map<String, List<ValueSource>>> findValueCandidatesWithSources(List<FileBuffer> pomFiles) {
 		
 		var foundValues = Map.<MavenUidComponent, Map<String, List<ValueSource>>>of(
@@ -92,7 +98,7 @@ public class PomAnalyzer {
 				);
 		
 		boolean correctPath = true;
-		Function<String, List<ValueSource>> listConstructor = key -> key == null ? null : new ArrayList<>(4);// we expect 4 value sources (2 files, 2 paths) per jar
+		Function<String, List<ValueSource>> listConstructor = key -> new ArrayList<>(4);// we expect 4 value sources (2 files, 2 paths) per jar
 		
 		try {
 			for (var file : pomFiles) {
@@ -115,12 +121,11 @@ public class PomAnalyzer {
 					var firstParent = file.path.getParent();
 					var secondParent = firstParent != null ? firstParent.getParent() : null;
 					var thirdParent = secondParent != null ? secondParent.getParent() : null;
-					correctPath = correctPath && firstParent != null && secondParent != null && thirdParent != null
-							&& thirdParent.toString().equals("META-INF" + File.pathSeparator + "maven");
-
-					if (correctPath) {
-						var groupId = secondParent.getFileName().toString();
-						var artifactId = firstParent.getFileSystem().toString();
+					correctPath = correctPath && firstParent != null && secondParent != null && thirdParent != null;
+					correctPath = correctPath && thirdParent.equals(Paths.get("META-INF/maven"));
+					{
+						var groupId = correctPath ? secondParent.getFileName().toString() : null;
+						var artifactId = correctPath ? firstParent.getFileName().toString() : null;
 						
 						var pathValueSource = new StringValueSource("Path: '" + file.path + "'");
 						foundValues.get(MavenUidComponent.GROUP_ID).computeIfAbsent(groupId, listConstructor).add(pathValueSource);
