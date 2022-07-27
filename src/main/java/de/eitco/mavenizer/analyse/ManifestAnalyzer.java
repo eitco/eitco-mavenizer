@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
 import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.StringValueSource;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
 import de.eitco.mavenizer.AnalyzerService.ValueSource;
 
@@ -34,13 +35,33 @@ public class ManifestAnalyzer {
 		
 		for (var entry : manifest.getMainAttributes().entrySet()) {
 			String attrName = ((Attributes.Name) entry.getKey()).toString();
-			if (Attribute.stringValues.contains(attrName)) {
+			
+			if (attrName.endsWith(VERSION_ATTRIBUTE_SUFFIX) && !VERSION_ATTRIBUTE_EXCLUDES.contains(attrName)) {
+				var uidComponent = MavenUidComponent.VERSION;
+				var attrValue = ((String) entry.getValue()).trim();
+				
+				Matcher matcher = Helper.Regex.attributeVersion.matcher(attrValue);
+				if (matcher.find()) {
+					String version = matcher.group(Helper.Regex.CAP_GROUP_VERSION);
+					if (version != null) {
+						var attrSource = new StringValueSource(attrName + ": '" + attrValue + "'");
+						{
+							var resultValue = new ValueCandidate(new ScoredValue(version, 2), Analyzer.MANIFEST, attrSource);
+							result.get(uidComponent).add(resultValue);
+						}
+						if (!version.equals(attrValue)) {
+							var resultValue = new ValueCandidate(new ScoredValue(attrValue, 1), Analyzer.MANIFEST, attrSource);
+							result.get(uidComponent).add(resultValue);
+						}
+					}
+				}
+			} else if (Attribute.stringValues.contains(attrName)) {
 				
 				var attr = Attribute.fromString(attrName);
-				var attrValue = (String) entry.getValue();
-				var attrEntry = new ManifestEntry(attr, attrValue);
+				var attrValue = ((String) entry.getValue()).trim();
+				var attrSource = new StringValueSource(attr.toString() + ": '" + attrValue + "'");
 				
-				for (var uidComponent : MavenUidComponent.values()) {
+				for (var uidComponent : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID)) {
 					var resultList = result.get(uidComponent);
 					Map<Attribute, CandidatesExtractor> extractors = null;
 					
@@ -51,16 +72,15 @@ public class ManifestAnalyzer {
 					case ARTIFACT_ID:
 						extractors = artifactIdExtractors;
 						break;
-					case VERSION:
-						extractors = Map.of();
-						break;
+					default:
+						throw new IllegalStateException();
 					}
 					
 					var extractor = extractors.get(attr);
 					if (extractor != null) {
 						var candidates = extractor.getCandidates(attrValue);
 						for (ScoredValue value : candidates) {
-							var resultValue = new ValueCandidate(value, Analyzer.MANIFEST, attrEntry);
+							var resultValue = new ValueCandidate(value, Analyzer.MANIFEST, attrSource);
 							resultList.add(resultValue);
 						}
 					}
@@ -69,20 +89,6 @@ public class ManifestAnalyzer {
 		}
 		
 		return result;
-	}
-	
-	public static class ManifestEntry implements ValueSource {
-		private final Attribute attr;
-		private final String attrValue;
-		
-		public ManifestEntry(Attribute attr, String attrValue) {
-			this.attr = attr;
-			this.attrValue = attrValue;
-		}
-		@Override
-		public String displaySourceDetails() {
-			return attr.toString() + ": '" + attrValue + "'";
-		}
 	}
 
 	public static enum Attribute {
@@ -138,6 +144,15 @@ public class ManifestAnalyzer {
 			Attribute.Bundle_SymbolicName,
 			attributeValue -> extractPattern_PackageLeafOrArtifactLeaf(attributeValue, 2)
 	);
+	
+	public static String VERSION_ATTRIBUTE_SUFFIX = "-Version";
+	public static Set<String> VERSION_ATTRIBUTE_EXCLUDES = Set.of(
+			"Ant-Version",
+			"Manifest-Version",
+			"Bundle-ManifestVersion",
+			"Archiver-Version",
+			"Specification-Version" // this attribute sometimes does not contain the minor version and is usually not the only version attribute anyway
+			);
 	
 	/**
 	 * Extract package name and package name subpatterns (package: foo.bar.baz, subpattern: foo.bar)

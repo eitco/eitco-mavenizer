@@ -38,34 +38,6 @@ public class AnalyzerService {
 	
 	public void runAnalysis(Path jarsDir) {
 		
-		var manifestAttributesInclude = List.of(
-			"Created-By",
-			"Extension-Name",
-			"Built-By",
-			"Main-Class",
-			"Package",
-			"Export-Package",
-			"Automatic-Module-Name",
-			"Bundle-Name",
-			"Bundle-Activator",
-			"Bundle-SymbolicName",
-			"Bundle-Version",
-			"Specification-Title",
-			"Specification-Vendor-Id",
-			"Specification-Version",
-			"Implementation-Title",
-			"Implementation-Vendor-Id",
-			"Implementation-Version"
-		);
-		
-		var manifestAttributesExclude = List.of(
-			"Manifest-Version",
-			"Archiver-Version",
-			"Import-Package",
-			"Export-Package",
-			"Include-Resource"
-		);
-		
 		try (Stream<Path> files = Files.list(jarsDir)) {
 		    files.forEach(jarPath -> {
 		    	if (!jarPath.getFileName().toString().endsWith(".jar")) {

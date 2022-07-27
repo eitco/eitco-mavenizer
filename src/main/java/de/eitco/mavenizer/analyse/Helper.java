@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 public class Helper {
 
-	static class Regex {
+	public static class Regex {
 		
 		// capture group names
 		public final static String CAP_GROUP_PACKAGE = "package";
@@ -20,9 +20,10 @@ public class Helper {
 		public final static String PATTERN_ARTIFACT_ID = "[a-z_][a-z0-9_\\-]*";
 		public final static String PATTERN_PACKAGE = "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_SUBPACKAGE + ")";
 		public final static String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
+		public final static String PATTERN_CLASSIFIER = "(([0-9]+)|([a-zA-Z]+))";
 		
 		public final static String PATTERN_VERSION = "[0-9]+(\\.[0-9]+)*(\\.[A-Z]+)?";// yes, "3.1.SONATYPE" is a version used in reality
-		public final static String PATTERN_CLASSIFIERS = "[a-zA-Z]+(\\-[a-zA-Z])?";// more than 2 classifiers is unrealistic
+		public final static String PATTERN_CLASSIFIERS = "(" + PATTERN_CLASSIFIER + ")(\\-" + PATTERN_CLASSIFIER + ")?";// more than 2 classifiers is unrealistic
 		
 		// specific patterns to test values with, using capture groups to extract substrings
 		public final static String PACKAGE_WITH_OPTIONAL_CLASS =
@@ -40,12 +41,16 @@ public class Helper {
 		public final static String JAR_FILENAME_VERSION_SUFFIX =
 				"\\-(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
 		
+		public final static String ATTRIBUTE_VERSION =
+				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
+		
 		// precompiled
 		public final static Pattern packageWithOptionalClass = Pattern.compile(PACKAGE_WITH_OPTIONAL_CLASS);
 		public final static Pattern packageStrictWithOptionalClass = Pattern.compile(PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS);
 		public final static Pattern artifactId = Pattern.compile(ARTIFACT_ID);
 		public final static Pattern optionalPackageWithArtifactIdAsLeaf = Pattern.compile(OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_AS_LEAF);
 		public final static Pattern jarFilenameVersionSuffix = Pattern.compile(JAR_FILENAME_VERSION_SUFFIX);
+		public final static Pattern attributeVersion = Pattern.compile(ATTRIBUTE_VERSION);
 	}
 
 	public static class CandidateExtractionHelper {
