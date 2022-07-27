@@ -1,4 +1,4 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyse;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,10 +11,11 @@ import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.Main.Analyzer;
-import de.eitco.mavenizer.Main.MavenUidComponent;
-import de.eitco.mavenizer.Main.ValueSource;
-import de.eitco.mavenizer.Main.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.Analyzer;
+import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
+import de.eitco.mavenizer.AnalyzerService.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.ValueSource;
 
 public class ManifestAnalyzer {
 	
@@ -41,7 +42,7 @@ public class ManifestAnalyzer {
 				
 				for (var uidComponent : MavenUidComponent.values()) {
 					var resultList = result.get(uidComponent);
-					Map<Attribute, ValueCandidatesExtractor> extractors = null;
+					Map<Attribute, CandidatesExtractor> extractors = null;
 					
 					switch (uidComponent) {
 					case GROUP_ID:
@@ -106,24 +107,11 @@ public class ManifestAnalyzer {
 	}
 	
 	@FunctionalInterface
-	public static interface ValueCandidatesExtractor {
+	public static interface CandidatesExtractor {
 		public List<ScoredValue> getCandidates(String attributeValue);
 	}
-	
-	public static class ScoredValue {
-		public final String value;
-		public final int confidence;
-		public ScoredValue(String value, int confidence) {
-			this.value = value;
-			this.confidence = confidence;
-		}
-		@Override
-		public String toString() {
-			return "[" + confidence + ", " + value + "]";
-		}
-	}
-	
-	public static Map<Attribute, ValueCandidatesExtractor> groupIdExtractors = Map.of(
+
+	public static Map<Attribute, CandidatesExtractor> groupIdExtractors = Map.of(
 			Attribute.Extension_Name,
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 4, 2),
 			Attribute.Implementation_Title,
@@ -138,7 +126,7 @@ public class ManifestAnalyzer {
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 2, 2)
 	);
 	
-	public static Map<Attribute, ValueCandidatesExtractor> artifactIdExtractors = Map.of(
+	public static Map<Attribute, CandidatesExtractor> artifactIdExtractors = Map.of(
 			Attribute.Extension_Name,
 			attributeValue -> extractPattern_ArtifactIdOrPackageLeaf(attributeValue, 8, 2),
 			Attribute.Implementation_Title,

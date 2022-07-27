@@ -1,18 +1,18 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyse;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 
-import de.eitco.mavenizer.Main.Analyzer;
-import de.eitco.mavenizer.Main.MavenUidComponent;
-import de.eitco.mavenizer.Main.StringValueSource;
-import de.eitco.mavenizer.Main.ValueSource;
-import de.eitco.mavenizer.Main.ValueCandidate;
-import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.Analyzer;
+import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
+import de.eitco.mavenizer.AnalyzerService.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.StringValueSource;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.ValueSource;
 
-public class JarNameAnalyzer {
+public class JarFilenameAnalyzer {
 	
 	public Map<MavenUidComponent, List<ValueCandidate>> analyze(String jarFilename) {
 		

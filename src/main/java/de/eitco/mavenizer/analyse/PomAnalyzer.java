@@ -1,32 +1,27 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyse;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.function.Function;
-
-import javax.management.RuntimeErrorException;
 
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
-import de.eitco.mavenizer.Main.Analyzer;
-import de.eitco.mavenizer.Main.MavenUidComponent;
-import de.eitco.mavenizer.Main.ValueSource;
-import de.eitco.mavenizer.Main.StringValueSource;
-import de.eitco.mavenizer.Main.ValueCandidate;
-import de.eitco.mavenizer.ManifestAnalyzer.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.Analyzer;
+import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
+import de.eitco.mavenizer.AnalyzerService.ScoredValue;
+import de.eitco.mavenizer.AnalyzerService.StringValueSource;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.ValueSource;
 
 public class PomAnalyzer {
 	
