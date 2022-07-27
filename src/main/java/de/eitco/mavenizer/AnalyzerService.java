@@ -22,6 +22,7 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
 
+import de.eitco.mavenizer.analyse.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyse.JarFilenameAnalyzer;
 import de.eitco.mavenizer.analyse.ManifestAnalyzer;
 import de.eitco.mavenizer.analyse.PomAnalyzer;
@@ -33,6 +34,7 @@ public class AnalyzerService {
 	private final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
 	private final JarFilenameAnalyzer jarNameAnalyzer = new JarFilenameAnalyzer();
 	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
+	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	
 	public void runAnalysis(Path jarsDir) {
 		
@@ -75,7 +77,9 @@ public class AnalyzerService {
 				
 				try (var fin = new FileInputStream(jarPath.toFile())) {
 					
-					List<FileBuffer> pomFiles = new ArrayList<>(1);
+					List<FileBuffer> pomFiles = new ArrayList<>(2);
+					List<Path> classFilepaths = new ArrayList<>();
+					
 					var manifest = readJarStream(fin, (entry, in) -> {
 						
 						var entryPath = Paths.get(entry.getName());
@@ -89,6 +93,9 @@ public class AnalyzerService {
 								} catch (IOException e) {
 									throw new UncheckedIOException(e);
 								}
+							}
+							if (filename.endsWith(".class")) {
+								classFilepaths.add(entryPath);
 							}
 						}
 						
@@ -104,6 +111,7 @@ public class AnalyzerService {
 //						}
 					});
 					
+					var classResult = classAnalyzer.analyze(classFilepaths);
 					var pomResult = pomAnalyzer.analyze(pomFiles);
 					var manifestResult = manifestAnalyzer.analyze(manifest);
 					var jarNameResult = jarNameAnalyzer.analyze(jarName);
@@ -114,6 +122,7 @@ public class AnalyzerService {
 							MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
 							);
 					for (var uidComponent : MavenUidComponent.values()) {
+						result.get(uidComponent).addAll(classResult.get(uidComponent));
 						result.get(uidComponent).addAll(pomResult.get(uidComponent));
 						result.get(uidComponent).addAll(manifestResult.get(uidComponent));
 						result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
@@ -127,15 +136,6 @@ public class AnalyzerService {
 		    });
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
-		}
-	}
-	
-	public static String rightPad(String str, int minLength) {
-		if (str.length() < minLength) {
-			int padLength = minLength - str.length();
-			return str + " ".repeat(padLength);
-		} else {
-			return str;
 		}
 	}
 	
@@ -158,7 +158,7 @@ public class AnalyzerService {
 			}
 			for (ValueCandidate candidate : resultList) {
 				System.out.println("        "
-						+ rightPad(candidate.scoredValue.toString(), valuePadding + 2)
+						+ StringUtil.rightPad(candidate.scoredValue.toString(), valuePadding + 2)
 						+ " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySourceDetails() + ")");
 			}
 		}
@@ -179,6 +179,7 @@ public class AnalyzerService {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
+		CLASS_FILEPATH("Class-Filepath"),
 		MAVEN_REPO_CHEK("Repo-Check");
 		
 		public final String displayName;
