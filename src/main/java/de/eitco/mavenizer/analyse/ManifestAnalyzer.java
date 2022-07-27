@@ -144,7 +144,7 @@ public class ManifestAnalyzer {
 	 */
 	private static List<ScoredValue> extractPattern_PackageWithOptionalClass(String attributeValue, int confidenceExactMatch, int confidenceSubpatternMatch) {
 		
-		Matcher matcher = Helper.Regex.packageWithOptionalClass.matcher(attributeValue);
+		Matcher matcher = Helper.Regex.packageStrictWithOptionalClass.matcher(attributeValue);
 		if (!matcher.find()) {
 			return List.of();
 		}
@@ -182,7 +182,7 @@ public class ManifestAnalyzer {
 	 * If value matches package pattern (foo.bar.baz), extract leaf (baz).
 	 */
 	private static List<ScoredValue> extractPattern_PackageLeaf(String attributeValue, int confidenceLeaf) {
-		Matcher matcher = Helper.Regex.packageWithOptionalClass.matcher(attributeValue);
+		Matcher matcher = Helper.Regex.packageStrictWithOptionalClass.matcher(attributeValue);
 		if (matcher.find()) {
 			String pakkage = matcher.group(Helper.Regex.CAP_GROUP_PACKAGE);
 			if (pakkage != null) {

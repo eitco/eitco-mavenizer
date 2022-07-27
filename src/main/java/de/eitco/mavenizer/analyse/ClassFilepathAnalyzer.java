@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
@@ -110,32 +111,39 @@ public class ClassFilepathAnalyzer {
 		}
 		
 		// gather relevant folder statistics (recursive/deep class count for each folder)
-		var statsList = new ArrayList<FolderStats>();
+		List<FolderStats> statsList = new ArrayList<>();
 		var totalClassCount = folderTree.getStats(statsList);
 		statsList.sort(Comparator.comparing((FolderStats stats) -> stats.deepClassCount).reversed());
 		
 		var resultGroupIds = result.get(MavenUidComponent.GROUP_ID);
 		
-		// filter for folders with high number of classes to get groupId candidates
+		// filter for folders with high number of classes, filter out root folder itself
+		var minCountRatio = 0.6f;
+		statsList = statsList.stream()
+				.filter(stats -> ((float)stats.deepClassCount / totalClassCount) >= minCountRatio)
+				.filter(stats -> stats.path.getNameCount() >= 2)
+				.collect(Collectors.toList());
+		
+		// special case: If there is basically only one common folder without common subfolders, it is allowed as groupId candidate
+		var minPathDepth = statsList.size() <= 1 ? 1 : 2;
+		
 		for (var stats : statsList) {
-			var pathDepth = stats.path.getNameCount();
-			if (pathDepth >= 3 && pathDepth <= 5) {
-				var countRatio = (float)stats.deepClassCount / totalClassCount;
+			var path = stats.path.subpath(1, stats.path.getNameCount());// remove root
+			var pathDepth = path.getNameCount();
+			if (pathDepth >= minPathDepth && pathDepth <= 4) {
 				
-				if (countRatio > 0.6) {
-					int confidence = (int)((countRatio * 2) + 0.5);
-					var pathWithoutTreeRoot = stats.path.subpath(1, stats.path.getNameCount());
-					var pakkage = pathWithoutTreeRoot.toString().replace('\\', '.').replace('/', '.');
+				var countRatio = (float)stats.deepClassCount / totalClassCount;
+				var confidence = (int)((countRatio * 2) + 0.5);
+				var pakkage = path.toString().replace('\\', '.').replace('/', '.');
+				
+				Matcher matcher = Helper.Regex.packageWithOptionalClass.matcher(pakkage);
+				if (matcher.find()) {
+					String validPackage = matcher.group(Helper.Regex.CAP_GROUP_PACKAGE);
+					var value = new ScoredValue(validPackage, confidence);
 					
-					Matcher matcher = Helper.Regex.packageWithOptionalClass.matcher(pakkage);
-					if (matcher.find()) {
-						String validPackage = matcher.group(Helper.Regex.CAP_GROUP_PACKAGE);
-						var value = new ScoredValue(validPackage, confidence);
-						
-						var countRatioPercent = StringUtil.leftPad((int)(countRatio * 100) + "", 3);
-						var sourceString = "Path contains " + countRatioPercent + "% of classes: '" + pathWithoutTreeRoot.toString() + "'";
-						resultGroupIds.add(new ValueCandidate(value, Analyzer.CLASS_FILEPATH, new StringValueSource(sourceString)));
-					}
+					var countRatioPercent = StringUtil.leftPad((int)(countRatio * 100) + "", 3);
+					var sourceString = "Path contains " + countRatioPercent + "% of classes: '" + path.toString() + "'";
+					resultGroupIds.add(new ValueCandidate(value, Analyzer.CLASS_FILEPATH, new StringValueSource(sourceString)));
 				}
 			}
 		}

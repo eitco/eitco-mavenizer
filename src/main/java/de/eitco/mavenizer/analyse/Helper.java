@@ -18,14 +18,18 @@ public class Helper {
 		public final static String PATTERN_CLASS = "[A-Z]\\w*";
 		public final static String PATTERN_SUBPACKAGE = "[a-z_][a-z0-9_]*";
 		public final static String PATTERN_ARTIFACT_ID = "[a-z_][a-z0-9_\\-]*";
-		public final static String PATTERN_PACKAGE_STRICT = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
+		public final static String PATTERN_PACKAGE = "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_SUBPACKAGE + ")";
+		public final static String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
 		
 		public final static String PATTERN_VERSION = "[0-9]+(\\.[0-9]+)*(\\.[A-Z]+)?";// yes, "3.1.SONATYPE" is a version used in reality
 		public final static String PATTERN_CLASSIFIERS = "[a-zA-Z]+(\\-[a-zA-Z])?";// more than 2 classifiers is unrealistic
 		
 		// specific patterns to test values with, using capture groups to extract substrings
 		public final static String PACKAGE_WITH_OPTIONAL_CLASS =
-				"^(?<" + CAP_GROUP_PACKAGE + ">" + PATTERN_PACKAGE_STRICT + ")(\\.(?<" + CAP_GROUP_CLASS + ">" + PATTERN_CLASS + "))?$";
+				"^(?<" + CAP_GROUP_PACKAGE + ">" + PATTERN_PACKAGE + ")(\\.(?<" + CAP_GROUP_CLASS + ">" + PATTERN_CLASS + "))?$";
+		
+		public final static String PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS =
+				"^(?<" + CAP_GROUP_PACKAGE + ">" + PATTERN_PACKAGE_2_OR_MORE + ")(\\.(?<" + CAP_GROUP_CLASS + ">" + PATTERN_CLASS + "))?$";
 		
 		public final static String ARTIFACT_ID =
 				"^(?<" + CAP_GROUP_ARTIFACT_ID + ">" + PATTERN_ARTIFACT_ID + ")$";
@@ -38,6 +42,7 @@ public class Helper {
 		
 		// precompiled
 		public final static Pattern packageWithOptionalClass = Pattern.compile(PACKAGE_WITH_OPTIONAL_CLASS);
+		public final static Pattern packageStrictWithOptionalClass = Pattern.compile(PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS);
 		public final static Pattern artifactId = Pattern.compile(ARTIFACT_ID);
 		public final static Pattern optionalPackageWithArtifactIdAsLeaf = Pattern.compile(OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_AS_LEAF);
 		public final static Pattern jarFilenameVersionSuffix = Pattern.compile(JAR_FILENAME_VERSION_SUFFIX);
