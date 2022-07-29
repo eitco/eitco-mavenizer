@@ -1,28 +1,18 @@
 package de.eitco.mavenizer.analyse;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
 import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
-import de.eitco.mavenizer.AnalyzerService.ScoredValue;
-import de.eitco.mavenizer.AnalyzerService.StringValueSource;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
-import de.eitco.mavenizer.AnalyzerService.ValueSource;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
 
 public class JarFilenameAnalyzer {
 	
-	public Map<MavenUidComponent, List<ValueCandidate>> analyze(String jarFilename) {
+	public void analyze(ValueCandidateCollector result, String jarFilename) {
 		
-		var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
-				MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
-				MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
-				MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
-				);
+		// TODO also return name of jar (with version-suffix removed if possible) so we can identify jars to apply analyzer settings from a previous version of the software containing the jars
 		
-		ValueSource valueSource = new StringValueSource("'" + jarFilename + "'");
+		var valueSource = "'" + jarFilename + "'";
 		var nameWithoutExt = jarFilename.substring(0, jarFilename.lastIndexOf('.'));
 		
 		Matcher matcher = Helper.Regex.jarFilenameVersionSuffix.matcher(nameWithoutExt);
@@ -31,23 +21,17 @@ public class JarFilenameAnalyzer {
 			if (version != null) {
 				int suffixStart = matcher.start();
 				var nameWithoutVersion = nameWithoutExt.substring(0, suffixStart);
-				{
-					var value = new ScoredValue(nameWithoutVersion, 6);
-					var candidate = new ValueCandidate(value, Analyzer.JAR_FILENAME, valueSource);
-					result.get(MavenUidComponent.ARTIFACT_ID).add(candidate);
-				}{
-					var value = new ScoredValue(version, 6);
-					var candidate = new ValueCandidate(value, Analyzer.JAR_FILENAME, valueSource);
-					result.get(MavenUidComponent.VERSION).add(candidate);
-				}
-				return result;
+				
+				result.addCandidate(MavenUidComponent.ARTIFACT_ID, nameWithoutVersion, 6, valueSource);
+				result.addCandidate(MavenUidComponent.VERSION, version, 6, valueSource);
+				return;
 			}
 		}
 		
-		var value = new ScoredValue(nameWithoutExt, 4);
-		var candidate = new ValueCandidate(value, Analyzer.JAR_FILENAME, valueSource);
-		result.get(MavenUidComponent.ARTIFACT_ID).add(candidate);
-
-		return result;
+		result.addCandidate(MavenUidComponent.ARTIFACT_ID, nameWithoutExt, 4, valueSource);
+	}
+	
+	public Analyzer getType() {
+		return Analyzer.JAR_FILENAME;
 	}
 }

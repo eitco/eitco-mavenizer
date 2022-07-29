@@ -13,22 +13,14 @@ import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
 import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
-import de.eitco.mavenizer.AnalyzerService.ScoredValue;
-import de.eitco.mavenizer.AnalyzerService.StringValueSource;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
 
 public class ManifestAnalyzer {
 	
-	public Map<MavenUidComponent, List<ValueCandidate>> analyze(Optional<Manifest> manifestOptional) {
-		
-		var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
-				MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
-				MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
-				MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
-				);
+	public void analyze(ValueCandidateCollector result, Optional<Manifest> manifestOptional) {
 		
 		if (!manifestOptional.isPresent()) {
-			return result;
+			return;
 		}
 		var manifest = manifestOptional.get();
 		
@@ -43,14 +35,11 @@ public class ManifestAnalyzer {
 				if (matcher.find()) {
 					String version = matcher.group(Helper.Regex.CAP_GROUP_VERSION);
 					if (version != null) {
-						var attrSource = new StringValueSource(attrName + ": '" + attrValue + "'");
-						{
-							var resultValue = new ValueCandidate(new ScoredValue(version, 2), Analyzer.MANIFEST, attrSource);
-							result.get(uidComponent).add(resultValue);
-						}
+						var attrSource = attrName + ": '" + attrValue + "'";
+						
+						result.addCandidate(uidComponent, version, 2, attrSource);
 						if (!version.equals(attrValue)) {
-							var resultValue = new ValueCandidate(new ScoredValue(attrValue, 1), Analyzer.MANIFEST, attrSource);
-							result.get(uidComponent).add(resultValue);
+							result.addCandidate(uidComponent, attrValue, 1, attrSource);
 						}
 					}
 				}
@@ -58,10 +47,10 @@ public class ManifestAnalyzer {
 				
 				var attr = Attribute.fromString(attrName);
 				var attrValue = ((String) entry.getValue()).trim();
-				var attrSource = new StringValueSource(attr.toString() + ": '" + attrValue + "'");
+				var attrSource = attr.toString() + ": '" + attrValue + "'";
 				
 				for (var uidComponent : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID)) {
-					var resultList = result.get(uidComponent);
+//					var resultList = result.get(uidComponent);
 					Map<Attribute, CandidatesExtractor> extractors = null;
 					
 					switch (uidComponent) {
@@ -78,16 +67,17 @@ public class ManifestAnalyzer {
 					var extractor = extractors.get(attr);
 					if (extractor != null) {
 						var candidates = extractor.getCandidates(attrValue);
-						for (ScoredValue value : candidates) {
-							var resultValue = new ValueCandidate(value, Analyzer.MANIFEST, attrSource);
-							resultList.add(resultValue);
+						for (ScoredValue scoredValue : candidates) {
+							result.addCandidate(uidComponent, scoredValue.value, scoredValue.confidence, attrSource);
 						}
 					}
 				}
 			}
 		}
-		
-		return result;
+	}
+	
+	public Analyzer getType() {
+		return Analyzer.MANIFEST;
 	}
 
 	public static enum Attribute {
@@ -108,6 +98,16 @@ public class ManifestAnalyzer {
 		}
 		public static Attribute fromString(String attributeName) {
 			return Attribute.valueOf(attributeName.replace('-', '_'));
+		}
+	}
+	
+	public static class ScoredValue {
+		public final String value;
+		public final int confidence;
+		
+		public ScoredValue(String value, int confidence) {
+			this.value = value;
+			this.confidence = confidence;
 		}
 	}
 	

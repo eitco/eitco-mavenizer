@@ -10,12 +10,10 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
 import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
-import de.eitco.mavenizer.AnalyzerService.ScoredValue;
-import de.eitco.mavenizer.AnalyzerService.StringValueSource;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
+import de.eitco.mavenizer.StringUtil;
 
 public class ClassFilepathAnalyzer {
 	
@@ -91,13 +89,7 @@ public class ClassFilepathAnalyzer {
 		}
 	}
 	
-	public Map<MavenUidComponent, List<ValueCandidate>> analyze(List<Path> paths) {
-		
-		var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
-				MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
-				MavenUidComponent.ARTIFACT_ID, List.of(),
-				MavenUidComponent.VERSION, List.of()
-				);
+	public void analyze(ValueCandidateCollector result, List<Path> paths) {
 		
 		// convert paths into tree structure to make it possible to walk the tree to gather folder statistics
 		FolderNode folderTree = new FolderNode(CURRENT_DIR);
@@ -114,8 +106,6 @@ public class ClassFilepathAnalyzer {
 		List<FolderStats> statsList = new ArrayList<>();
 		var totalClassCount = folderTree.getStats(statsList);
 		statsList.sort(Comparator.comparing((FolderStats stats) -> stats.deepClassCount).reversed());
-		
-		var resultGroupIds = result.get(MavenUidComponent.GROUP_ID);
 		
 		// filter for folders with high number of classes, filter out root folder itself
 		var minCountRatio = 0.6f;
@@ -139,15 +129,16 @@ public class ClassFilepathAnalyzer {
 				Matcher matcher = Helper.Regex.packageWithOptionalClass.matcher(pakkage);
 				if (matcher.find()) {
 					String validPackage = matcher.group(Helper.Regex.CAP_GROUP_PACKAGE);
-					var value = new ScoredValue(validPackage, confidence);
-					
 					var countRatioPercent = StringUtil.leftPad((int)(countRatio * 100) + "", 3);
 					var sourceString = "Path contains " + countRatioPercent + "% of classes: '" + path.toString() + "'";
-					resultGroupIds.add(new ValueCandidate(value, Analyzer.CLASS_FILEPATH, new StringValueSource(sourceString)));
+					
+					result.addCandidate(MavenUidComponent.GROUP_ID, validPackage, confidence, sourceString);
 				}
 			}
 		}
-
-		return result;
+	}
+	
+	public Analyzer getType() {
+		return Analyzer.CLASS_FILEPATH;
 	}
 }

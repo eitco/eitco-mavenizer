@@ -8,11 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
@@ -83,27 +86,53 @@ public class AnalyzerService {
 //						}
 					});
 					
-					var classResult = classAnalyzer.analyze(classFilepaths);
-					var pomResult = pomAnalyzer.analyze(pomFiles);
-					var manifestResult = manifestAnalyzer.analyze(manifest);
-					var jarNameResult = jarNameAnalyzer.analyze(jarName);
-					
-					var result = Map.<MavenUidComponent, List<ValueCandidate>>of(
-							MavenUidComponent.GROUP_ID, new ArrayList<ValueCandidate>(),
-							MavenUidComponent.ARTIFACT_ID, new ArrayList<ValueCandidate>(),
-							MavenUidComponent.VERSION, new ArrayList<ValueCandidate>()
+					var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
+							MavenUidComponent.GROUP_ID, new HashMap<>(),
+							MavenUidComponent.ARTIFACT_ID, new HashMap<>(),
+							MavenUidComponent.VERSION, new HashMap<>()
 							);
+					
+					AnalyzerCandidateCollector collector = (Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
+						Map<String, ValueCandidate> candidates = collected.get(component);
+						
+						var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
+						var source = new ValueSource(analyzer, confidenceScore, sourceDetails);
+						candidate.addSource(source);
+					};
+					
+					classAnalyzer.analyze(collector.withAnalyzer(classAnalyzer.getType()), classFilepaths);
+					pomAnalyzer.analyze(collector.withAnalyzer(pomAnalyzer.getType()), pomFiles);
+					manifestAnalyzer.analyze(collector.withAnalyzer(manifestAnalyzer.getType()), manifest);
+					jarNameAnalyzer.analyze(collector.withAnalyzer(jarNameAnalyzer.getType()), jarName);
+					
+					var sorted = Map.<MavenUidComponent, List<ValueCandidate>>of(
+							MavenUidComponent.GROUP_ID, new ArrayList<>(),
+							MavenUidComponent.ARTIFACT_ID, new ArrayList<>(),
+							MavenUidComponent.VERSION, new ArrayList<>()
+							);
+					
+					var newScoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoreSum).reversed();
+					var sourceComparator = Comparator.comparing((ValueSource source) -> source.score).reversed();
+					
 					for (var uidComponent : MavenUidComponent.values()) {
-						result.get(uidComponent).addAll(classResult.get(uidComponent));
-						result.get(uidComponent).addAll(pomResult.get(uidComponent));
-						result.get(uidComponent).addAll(manifestResult.get(uidComponent));
-						result.get(uidComponent).addAll(jarNameResult.get(uidComponent));
+						var currentCollected = collected.get(uidComponent);
+						var currentSorted = sorted.get(uidComponent);
+						
+						for (var candidate : currentCollected.values()) {
+							currentSorted.add(candidate);
+							candidate.sortSources(sourceComparator);
+						}
+						currentSorted.sort(newScoreComparator);
 					}
 					
 					System.out.println();
-					printAnalysisResults(result);
+					printAnalysisResults(sorted);
 					System.out.println();
 					System.out.println("-".repeat(80));
+					
+					// TODO:
+					// get (up to) top 8 MavenUids (permutations), version can be null, values must be above certain score?? 
+					// get a CompletableFuture from the MavenChecker with Type Map<MavenUid, CheckResult>
 					
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
@@ -115,28 +144,50 @@ public class AnalyzerService {
 	}
 	
 	public static void printAnalysisResults(Map<MavenUidComponent, List<ValueCandidate>> result) {
-		
-		var scoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoredValue.confidence).reversed();
+		BiFunction<String, Integer, String> scoredValueToString =
+				(value, score) -> StringUtil.leftPad(score + "", 2) + " | " + value;
 		
 		for (var uidComponent : MavenUidComponent.values()) {
 			
 			var resultList = result.get(uidComponent);
-			resultList.sort(scoreComparator);
 			
 			if (resultList.size() > 0) {
 				System.out.println("    " + uidComponent.name());
 			}
 			int valuePadding = 20;
 			for (ValueCandidate candidate : resultList) {
-				int valueLength = candidate.scoredValue.toString().length();
+				var valueString = scoredValueToString.apply(candidate.value, candidate.scoreSum);
+				
+				int valueLength = valueString.toString().length();
 				valuePadding = Math.max(valuePadding, valueLength);
 			}
 			for (ValueCandidate candidate : resultList) {
-				System.out.println("        "
-						+ StringUtil.rightPad(candidate.scoredValue.toString(), valuePadding + 2)
-						+ " (" + candidate.source.displayName + " -> " + candidate.sourceDetails.displaySourceDetails() + ")");
+				var valueAndScore = scoredValueToString.apply(candidate.value, candidate.scoreSum);
+				
+				for (int i = 0; i < candidate.sources.size(); i++) {
+					var source = candidate.sources.get(i);
+					var valueString = "        " + StringUtil.rightPad(i == 0 ? valueAndScore : "", valuePadding + 2);
+					var sourceString = " (" + source.score + " | " + source.analyzer.displayName + " -> " + source.details + ")";
+					System.out.println(valueString + sourceString);
+				}
 			}
 		}
+	}
+	
+	@FunctionalInterface
+	public static interface AnalyzerCandidateCollector {
+		void addCandidate(Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+		
+		default ValueCandidateCollector withAnalyzer(Analyzer analyzer) {
+			return (component, value, confidenceScore, sourceDetails) -> {
+				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
+			};
+		}
+	}
+	
+	@FunctionalInterface
+	public static interface ValueCandidateCollector {
+		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
 	}
 	
 	public static enum MavenUidComponent {
@@ -150,12 +201,24 @@ public class AnalyzerService {
 		}
 	}
 	
+	public static class MavenUid {
+		public final String groupId;
+		public final String artifactId;
+		public final String version;
+		
+		public MavenUid(String groupId, String artifactId, String version) {
+			this.groupId = groupId;
+			this.artifactId = artifactId;
+			this.version = version;
+		}
+	}
+	
 	public static enum Analyzer {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
 		CLASS_FILEPATH("Class-Filepath"),
-		MAVEN_REPO_CHEK("Repo-Check");
+		MAVEN_REPO_CHECK("Repo-Check");
 		
 		public final String displayName;
 		private Analyzer(String displayName) {
@@ -164,42 +227,34 @@ public class AnalyzerService {
 	}
 	
 	public static class ValueCandidate {
-		public ScoredValue scoredValue;
-		public Analyzer source;
-		public ValueSource sourceDetails;
-		
-		public ValueCandidate(ScoredValue scoredValue, Analyzer source, ValueSource sourceDetails) {
-			this.scoredValue = scoredValue;
-			this.source = source;
-			this.sourceDetails = sourceDetails;
-		}
-	}
-	
-	public static class ScoredValue {
 		public final String value;
-		public final int confidence;
-		public ScoredValue(String value, int confidence) {
+		public final List<ValueSource> sources;
+		public int scoreSum = 0;
+		
+		private final List<ValueSource> sourcesInternal = new ArrayList<>();
+		
+		public ValueCandidate(String value) {
 			this.value = value;
-			this.confidence = confidence;
+			this.sources = Collections.unmodifiableList(sourcesInternal);
 		}
-		@Override
-		public String toString() {
-			return StringUtil.leftPad(confidence + "", 2) + " | " + value;
+		public void addSource(ValueSource source) {
+			sourcesInternal.add(source);
+			scoreSum += source.score;
+		}
+		public void sortSources(Comparator<? super ValueSource> comparator) {
+			sourcesInternal.sort(comparator);
 		}
 	}
 	
-	public static interface ValueSource {
-		public String displaySourceDetails();
-	}
-	
-	public static class StringValueSource implements ValueSource {
-		private String source;
-		public StringValueSource(String source) {
-			this.source = source;
-		}
-		@Override
-		public String displaySourceDetails() {
-			return source;
+	public static class ValueSource {
+		public final Analyzer analyzer;
+		public final int score;
+		public final String details;
+		
+		public ValueSource(Analyzer analyzer, int score, String details) {
+			this.analyzer = analyzer;
+			this.score = score;
+			this.details = details;
 		}
 	}
 	
