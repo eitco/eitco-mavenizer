@@ -39,6 +39,8 @@ public class AnalyzerService {
 	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
 	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	
+	private final MavenRepoChecker repoChecker = new MavenRepoChecker();
+	
 	public void runAnalysis(Path jarsDir) {
 		
 		try (Stream<Path> files = Files.list(jarsDir)) {

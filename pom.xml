@@ -9,15 +9,71 @@
 	<maven.compiler.source>11</maven.compiler.source>
     
     <version.maven>3.8.6</version.maven>
+    <version.maven-resolver>1.8.1</version.maven-resolver>
   	<version.asm>9.3</version.asm>
   </properties>
   
   <dependencies>
+  
+  		<!-- Read / Write pom.xml / maven-metadata.xml -->
 		<dependency>
 			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-model</artifactId>
 			<version>${version.maven}</version>
 		</dependency>
+		
+		<!-- Access local / remote repo information -->
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-repository-metadata</artifactId>
+			<version>${version.maven}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-resolver-provider</artifactId>
+			<version>${version.maven}</version>
+			<exclusions>
+				<!-- Maven resolver dependencies used by provider are old and conflict with newest resolver versions  -->
+				<exclusion>
+					<groupId>org.apache.maven.resolver</groupId>
+					<artifactId>maven-resolver-api</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.apache.maven.resolver</groupId>
+					<artifactId>maven-resolver-spi</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.apache.maven.resolver</groupId>
+					<artifactId>maven-resolver-util</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.apache.maven.resolver</groupId>
+					<artifactId>maven-resolver-impl</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven.resolver</groupId>
+			<artifactId>maven-resolver-impl</artifactId>
+			<version>${version.maven-resolver}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven.resolver</groupId>
+			<artifactId>maven-resolver-connector-basic</artifactId>
+			<version>${version.maven-resolver}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven.resolver</groupId>
+			<artifactId>maven-resolver-transport-http</artifactId>
+			<version>${version.maven-resolver}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven.resolver</groupId>
+			<artifactId>maven-resolver-transport-file</artifactId>
+			<version>${version.maven-resolver}</version>
+		</dependency>
+		
+		<!-- Other -->
 		<dependency>
 			<groupId>org.ow2.asm</groupId>
 		    <artifactId>asm</artifactId>
