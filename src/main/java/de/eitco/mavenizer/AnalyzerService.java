@@ -130,11 +130,14 @@ public class AnalyzerService {
 					System.out.println();
 					printAnalysisResults(sorted);
 					System.out.println();
-					System.out.println("-".repeat(80));
 					
-					// TODO:
-					// get (up to) top 8 MavenUids (permutations), version can be null, values must be above certain score?? 
-					// get a CompletableFuture from the MavenChecker with Type Map<MavenUid, CheckResult>
+					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
+					var checkResults = repoChecker.checkOnline(jarPath, toCheck);
+//					for (var checkEntry : checkResults.entrySet()) {
+//						System.out.println("  " + checkEntry.getKey() + " -> " + checkEntry.getValue().name());
+//					}
+					
+					System.out.println("-".repeat(80));
 					
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
@@ -143,6 +146,8 @@ public class AnalyzerService {
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
+		
+		repoChecker.shutdown();
 	}
 	
 	public static void printAnalysisResults(Map<MavenUidComponent, List<ValueCandidate>> result) {
@@ -212,6 +217,10 @@ public class AnalyzerService {
 			this.groupId = groupId;
 			this.artifactId = artifactId;
 			this.version = version;
+		}
+		@Override
+		public String toString() {
+			return "[ " + groupId + " | " + artifactId + " | " +version + " ]";
 		}
 	}
 	
