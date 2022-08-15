@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.apache.maven.settings.Settings;
 import org.apache.maven.settings.io.xpp3.SettingsXpp3Reader;
@@ -54,18 +55,14 @@ public class MavenRepoChecker {
 			MavenUidComponent.VERSION, 2
 			);
 	
-	public static class Permutation {
-		public String groupId;
-		public String artifactId;
-		public String version;
-	}
-	
 	public static enum CheckResult {
 		MATCH_EXACT_SHA,
 		MATCH_EXACT_CLASSNAMES,
 		MATCH_SUPERSET_CLASSNAMES,
 		NO_MATCH;
 	}
+	
+	private final MavenUid onlineRepoTestJar = new MavenUid("junit", "junit", "4.12");
 	
 //	private final Path LOCAL_REPO_PATH = Paths.get(System.getProperty("user.home"), ".m2", "repository");
 	private final Path TEMP_REPO_PATH =  Paths.get("./temp-m2");
@@ -82,8 +79,10 @@ public class MavenRepoChecker {
 	
 	private final List<RemoteRepository> remoteRepos = Collections.synchronizedList(new ArrayList<>());
 	
-	private final CompletableFuture<?> onFilesWritten;
+	private final CompletableFuture<?> onLocalRepoDeleted;
+	private final CompletableFuture<?> onSettingsFileWritten;
 	private final CompletableFuture<?> onRemoteReposConfigured;
+	private final CompletableFuture<?> onOnlineAccessChecked;
 	
 	
 	public MavenRepoChecker() {
@@ -105,11 +104,22 @@ public class MavenRepoChecker {
 		
 		repoSystemSession.setLocalRepositoryManager(localTempRepoManager);
 		
-		// read settings async
-		onFilesWritten = writeEffectiveSettingsToFile(TEMP_SETTINGS_FILE);
-		onRemoteReposConfigured = onFilesWritten.thenAcceptAsync(__ -> {
+		// delete temp repo from previous runs
+		onLocalRepoDeleted = deleteLocalTempRepo();
+		
+		// read settings
+		onSettingsFileWritten = writeEffectiveSettingsToFile(TEMP_SETTINGS_FILE);
+		onRemoteReposConfigured = onSettingsFileWritten.thenAcceptAsync(__ -> {
 			readRepoSettings(TEMP_SETTINGS_FILE);
 		});
+		
+		// test online access
+		var readyForDownloads = CompletableFuture.allOf(onLocalRepoDeleted, onRemoteReposConfigured);
+		onOnlineAccessChecked = readyForDownloads.thenComposeAsync(__ -> assertOnlineReposReachable());
+	}
+	
+	public CompletableFuture<?> fullyInitialized() {
+		return onOnlineAccessChecked;
 	}
 	
 	public Set<MavenUid> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
@@ -145,7 +155,8 @@ public class MavenRepoChecker {
 		for (var uid : uidCandidates) {
 			if (uid.version != null) {
 				// TODO download should return completablefuture, all futures should be awaited together, then iterate over result files
-				var jarResult = downloadJar(uid);
+				fullyInitialized().join();
+				var jarResult = downloadJar(uid, false);
 				
 				if (jarResult.isPresent()) {
 					if (hashLocal == null) {
@@ -162,7 +173,7 @@ public class MavenRepoChecker {
 					result.put(uid, CheckResult.NO_MATCH);
 				}
 			} else {
-				// TODO get version candidatees
+				// TODO get version candidates
 			}
 		}
 		return result;
@@ -175,11 +186,36 @@ public class MavenRepoChecker {
 	public void shutdown() {
 		try {
 			onRemoteReposConfigured.cancel(true);
-			onFilesWritten.get(5, TimeUnit.SECONDS);
+			onSettingsFileWritten.get(5, TimeUnit.SECONDS);
 		} catch (ExecutionException e) {
 			throw new RuntimeException(e);
 		} 
 		catch (InterruptedException | TimeoutException e) {}
+	}
+	
+	private CompletableFuture<Void> deleteLocalTempRepo() {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				FileUtils.deleteDirectory(TEMP_REPO_PATH.toFile());
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
+	}
+	
+	private CompletableFuture<Void> assertOnlineReposReachable() {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				downloadJar(onlineRepoTestJar, true);
+				LOG.info("Online repositories are reachable!");
+			} catch (Exception e) {
+				if (e.getClass().equals(RuntimeException.class) || e.getClass().equals(UncheckedIOException.class)) {
+					e = (Exception) e.getCause();
+				}
+				LOG.error("Online repositories are not reachable! Exiting program.", e);
+				System.exit(1);
+			}
+		});
 	}
 	
 	private void readRepoSettings(Path settingsFile) {
@@ -190,7 +226,6 @@ public class MavenRepoChecker {
 		for (var profile : settings.getProfiles()) {
 			if (profile.getActivation().isActiveByDefault()) {
 				for (var repo : profile.getRepositories()) {
-					// TODO not sure if order of configured repos must be reversed to get same order as mvn itself would use.
 					remoteRepos.add(new RemoteRepository.Builder(repo.getName(), "default", repo.getUrl()).build());
 				}
 			}
@@ -230,28 +265,29 @@ public class MavenRepoChecker {
 		} 
 	}
 	
-	private Optional<File> downloadJar(MavenUid uid) {
-		onRemoteReposConfigured.join();
+	private Optional<File> downloadJar(MavenUid uid, boolean throwOnFail) {
 		
 		var artifact = new DefaultArtifact(uid.groupId, uid.artifactId, "jar", uid.version);
 		var request = new ArtifactRequest(artifact, remoteRepos, null);
 	    ArtifactResult response;
-	    Optional<File> result;
 		try {
-			response= repoSystem.resolveArtifact(repoSystemSession, request);
+			response = repoSystem.resolveArtifact(repoSystemSession, request);
 			if (response.isResolved()) {
 				LOG.debug("Sucess! Jar found for " + uid + " in repo: " + response.getRepository());
 				return Optional.of(response.getArtifact().getFile());
 			} else {
-				result = Optional.empty();
+				if (throwOnFail) {
+					throw new UncheckedIOException(new IOException("Could not resolve artifact '" + artifact + "' online!"));
+				}
 			}
 		} catch (ArtifactResolutionException e) {
-			// TODO in case of unreachable repo and things like that, we should throw exception
-			result = Optional.empty();
+			if (throwOnFail) {
+				throw new RuntimeException(e);
+			}
 		}
 		
 		LOG.debug("Jar not found for " + uid + ".");
-		return result;
+		return Optional.empty();
 	}
 	
 //	public void experiment(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
