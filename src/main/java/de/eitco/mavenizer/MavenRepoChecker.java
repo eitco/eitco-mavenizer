@@ -1,7 +1,6 @@
 package de.eitco.mavenizer;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
@@ -15,9 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import org.apache.commons.io.FileUtils;
@@ -25,7 +22,6 @@ import org.apache.maven.artifact.repository.metadata.io.xpp3.MetadataXpp3Reader;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.apache.maven.settings.Settings;
 import org.apache.maven.settings.io.xpp3.SettingsXpp3Reader;
-import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
@@ -62,6 +58,16 @@ public class MavenRepoChecker {
 			MavenUidComponent.ARTIFACT_ID, 2,
 			MavenUidComponent.VERSION, 2
 			);
+	
+	public static class UidCheck {
+		public final MavenUid fullUid;
+		public final CheckResult checkResult;
+		
+		public UidCheck(MavenUid fullUid, CheckResult checkResult) {
+			this.fullUid = fullUid;
+			this.checkResult = checkResult;
+		}
+	}
 	
 	public static enum CheckResult {
 		MATCH_EXACT_SHA,
@@ -156,43 +162,51 @@ public class MavenRepoChecker {
 		return result;
 	}
 	
-	public Map<MavenUid, CheckResult> checkOnline(Path localJarPath, Set<MavenUid> uidCandidates) {
-		var result = new HashMap<MavenUid, CheckResult>();
-		String hashLocal = null;
+	public CompletableFuture<Set<UidCheck>> checkOnline(String localJarHash, Set<MavenUid> uidCandidates) {
 		
-		// TODO download should return completablefuture, all futures should be awaited together, then iterate over result files
-		fullyInitialized().join();
-		
-		for (var uid : uidCandidates) {
-			if (uid.groupId == null || uid.artifactId == null) {
-				throw new IllegalArgumentException();
-			}
-			if (uid.version != null) {
+		return fullyInitialized().thenApplyAsync(__ -> {
+			var result = new LinkedHashSet<UidCheck>();
+			
+			for (var uid : uidCandidates) {
+				if (uid.groupId == null || uid.artifactId == null || uid.version == null) {
+					throw new IllegalArgumentException();
+				}
 				var jarResult = downloadJar(uid, false);
 				
 				if (jarResult.isPresent()) {
-					if (hashLocal == null) {
-						hashLocal = MavenUtil.sha256(localJarPath.toFile());
-					}
-					var hashOnline = MavenUtil.sha256(jarResult.get());
-					if (hashLocal.equals(hashOnline)) {
-						return Map.of(uid, CheckResult.MATCH_EXACT_SHA);
+					var onlineJarHash = MavenUtil.sha256(jarResult.get());
+					if (localJarHash.equals(onlineJarHash)) {
+						return Set.of(new UidCheck(uid, CheckResult.MATCH_EXACT_SHA));
 					} else {
 						// TODO check classes
-						result.put(uid, CheckResult.NO_MATCH);
+						result.add(new UidCheck(uid, CheckResult.NO_MATCH));
 					}
 				} else {
-					result.put(uid, CheckResult.NO_MATCH);
-				}
-			} else {
-				// we try to get valid versions and then recurse
-				var versions = downloadVersions(uid);
-				if (!versions.isEmpty()) {
-					return checkOnline(localJarPath, selectVersionCandidates(uid, versions));
+					result.add(new UidCheck(uid, CheckResult.NO_MATCH));
 				}
 			}
-		}
-		return result;
+			return result;
+		});
+	}
+	
+	public CompletableFuture<Map<MavenUid, Set<UidCheck>>> searchVersionsAndcheckOnline(String localJarHash, Set<MavenUid> uidCandidates) {
+		
+		return fullyInitialized().thenApplyAsync(__ -> {
+			var result = new HashMap<MavenUid, Set<UidCheck>>();
+			
+			for (var uid : uidCandidates) {
+				if (uid.groupId == null || uid.artifactId == null || uid.version != null) {
+					throw new IllegalArgumentException();
+				}
+				var versions = downloadVersions(uid);
+				if (!versions.isEmpty()) {
+					var selectedVersions = selectVersionCandidates(uid, versions);
+					var fullUidResults = MavenUtil.run(() -> checkOnline(localJarHash, selectedVersions).get());
+					result.put(uid, fullUidResults);
+				}
+			}
+			return result;
+		});
 	}
 	
 	public List<MavenUid> getSortedBlocking(Map<MavenUid, CompletableFuture<CheckResult>> uidCandidates) {
@@ -200,13 +214,10 @@ public class MavenRepoChecker {
 	}
 	
 	public void shutdown() {
-		try {
+		MavenUtil.run(() -> {
 			onRemoteReposConfigured.cancel(true);
 			onSettingsFileWritten.get(5, TimeUnit.SECONDS);
-		} catch (ExecutionException e) {
-			throw new RuntimeException(e);
-		} 
-		catch (InterruptedException | TimeoutException e) {}
+		});
 	}
 	
 	private CompletableFuture<Void> deleteLocalTempRepo() {
@@ -307,27 +318,23 @@ public class MavenRepoChecker {
 	}
 	
 	private List<String> downloadVersions(MavenUid uidWithoutVersion) {
+		
 	    Metadata metadataId = new DefaultMetadata(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, "maven-metadata.xml", Nature.RELEASE);
-	    // TODO we should make sure that maven central is queried if custom remote repo does not find something
-	    var request = new MetadataRequest(metadataId, remoteRepos.get(0), null);// TODO which repo is this even
 	    
-	    List<MetadataResult> responses;
-		responses = repoSystem.resolveMetadata(repoSystemSession, List.of(request));
-		// TODO we should assert there is only one response since we sent only one request
-		// TODO how does this fail when groupId / artifactId don't exist?
+	    var requestList = new ArrayList<MetadataRequest>(remoteRepos.size());
+	    for (var repo : remoteRepos) {
+	    	requestList.add(new MetadataRequest(metadataId, repo, null));
+	    }
+	    List<MetadataResult> responses = repoSystem.resolveMetadata(repoSystemSession, requestList);
 		for (var response : responses) {
 			if (!response.isResolved()) {
 				continue;
 			}
-			LOG.debug("Sucess! Versions found for " + uidWithoutVersion + " in repo: " + remoteRepos.get(0));// TODO which repo is this even
+			LOG.debug("Sucess! Versions found for " + uidWithoutVersion + " in repo: " + response.getRequest().getRepository());
 			var metadataFile = response.getMetadata().getFile();
-			try {
-				var m = new MetadataXpp3Reader().read(new FileInputStream(metadataFile));
-				var versions = m.getVersioning().getVersions();
-				return versions;
-			} catch (IOException | XmlPullParserException e) {
-				throw new RuntimeException(e);
-			}
+			var metadata = MavenUtil.parse(in -> new MetadataXpp3Reader().read(in), metadataFile);
+			var versions = metadata.getVersioning().getVersions();
+			return versions;
 		}
 		LOG.debug("Versions not found for " + uidWithoutVersion + ".");
 		return List.of();
@@ -343,96 +350,10 @@ public class MavenRepoChecker {
 			// we just select oldest and newest version because we don't want to download half the world
 			var latestVersion = versions.get(0);
 			var oldestVersion = versions.get(versions.size() - 1);
-			return Set.of(
+			return new LinkedHashSet<>(List.of(
 					new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, latestVersion),
 					new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, oldestVersion)
-				);
+				));
 		}
 	}
-	
-//	public void experiment(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
-//		
-//		
-//
-//	    
-////	    var artifact = new DefaultArtifact("org.apache.camel:camel:pom:3.18.0");
-//	    var pomArtifact = new DefaultArtifact("org.apache.camel:camel-core:pom:3.18.0");
-//	    var jarArtifact = new DefaultArtifact("org.apache.camel:camel-core:jar:3.18.0");
-//
-//	    RemoteRepository mavenCentral = new RemoteRepository.Builder("central", "default", "https://repo1.maven.org/maven2/").build();
-//	    
-//	    {
-//		    Metadata metadata = new DefaultMetadata("org.apache.camel", "camel-core", "maven-metadata.xml", Nature.RELEASE);
-//		    var request = new MetadataRequest(metadata, mavenCentral, null);
-//		    
-//		    List<MetadataResult> results;
-//			results = system.resolveMetadata(session, List.of(request));
-//			for (var result : results) {
-//				Metadata x = result.getMetadata();
-//				if (!result.isResolved()) {
-//					throw new IllegalStateException();
-//				}
-//				var f = result.getMetadata().getFile();
-//				try {
-//					var m = new MetadataXpp3Reader().read(new FileInputStream(f));
-//					var versions = m.getVersioning().getVersions();
-//					for (var v : versions) {
-//						System.out.println(v);
-//					}
-//				} catch (IOException | XmlPullParserException e) {
-//					throw new RuntimeException(e);
-//				}
-//				
-//				System.out.println(result);
-//				for (var entry : x.getProperties().entrySet()) {
-//					System.out.println(entry.getKey() + " - " + entry.getValue());
-//				}
-//			}
-//	    }
-	    
-//	    {
-//		    ArtifactDescriptorRequest dReq = new ArtifactDescriptorRequest(pomArtifact, List.of(mavenCentral), null);
-//		    ArtifactDescriptorResult dRes;
-//			try {
-//				dRes = system.readArtifactDescriptor(session, dReq);
-//			} catch (ArtifactDescriptorException e) {
-//				throw new RuntimeException(e);
-//			}
-//			System.out.println();
-//		    System.out.println(dRes.getArtifact().toString());
-//		    System.out.println(dRes.getProperties());
-//		    System.out.println(dRes);
-//	    }
-//	    {
-//		    ArtifactDescriptorRequest dReq = new ArtifactDescriptorRequest(jarArtifact, List.of(mavenCentral), null);
-//		    ArtifactDescriptorResult dRes;
-//			try {
-//				dRes = system.readArtifactDescriptor(session, dReq);
-//			} catch (ArtifactDescriptorException e) {
-//				throw new RuntimeException(e);
-//			}
-//			System.out.println();
-//			System.out.println(dRes.getArtifact().toString());
-//		    System.out.println(dRes.getProperties());
-//		    System.out.println(dRes);
-//	    }
-	    
-//	    {
-//		    ArtifactRequest request = new ArtifactRequest(pomArtifact, List.of(mavenCentral), null);
-//		    ArtifactResult result;
-//			try {
-//				result = system.resolveArtifact(session, request);
-//				if (!result.isResolved()) {
-//					throw new IllegalStateException();
-//				}
-//				System.out.println();
-//				System.out.println(result);
-//				System.out.println(result.getArtifact().getFile().getName());
-//			} catch (ArtifactResolutionException e) {
-//				throw new RuntimeException(e);
-//			}
-//	    }
-//	    
-//	    throw new IllegalStateException();
-//	}
 }

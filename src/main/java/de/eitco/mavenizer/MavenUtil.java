@@ -12,12 +12,40 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 public class MavenUtil {
 
+	@FunctionalInterface
+	public static interface BlockingSupplier<T> {
+		T get() throws InterruptedException, ExecutionException, TimeoutException;
+	}
+	
+	@FunctionalInterface
+	public static interface BlockingRunnable {
+		void run() throws InterruptedException, ExecutionException, TimeoutException;
+	}
+	
+	public static <T> T run(BlockingSupplier<T> supplier) {
+		try {
+			return supplier.get();
+		} catch (InterruptedException | ExecutionException | TimeoutException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static void run(BlockingRunnable runnable) {
+		try {
+			runnable.run();
+		} catch (InterruptedException | ExecutionException | TimeoutException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
 	@FunctionalInterface
 	public static interface Parser<T> {
 		T createParser(InputStream in) throws IOException, XmlPullParserException;

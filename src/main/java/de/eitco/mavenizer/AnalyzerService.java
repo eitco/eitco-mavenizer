@@ -14,17 +14,21 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.Opcodes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
+import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
 import de.eitco.mavenizer.analyse.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyse.JarFilenameAnalyzer;
 import de.eitco.mavenizer.analyse.ManifestAnalyzer;
@@ -34,6 +38,10 @@ import de.eitco.mavenizer.analyse.PomAnalyzer.PomFileType;
 
 public class AnalyzerService {
 
+	private static final Logger LOG = LoggerFactory.getLogger(AnalyzerService.class);
+	
+	private static final int MAX_JARS = -1;// -1 to disable limit
+	
 	private final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
 	private final JarFilenameAnalyzer jarNameAnalyzer = new JarFilenameAnalyzer();
 	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
@@ -43,123 +51,222 @@ public class AnalyzerService {
 	
 	public void runAnalysis(Path jarsDir) {
 		
+		System.out.println("Offline-Analysis started.");
+		
+		List<Path> jarPaths;
 		try (Stream<Path> files = Files.list(jarsDir)) {
-		    files.forEach(jarPath -> {
-		    	if (!jarPath.getFileName().toString().endsWith(".jar")) {
-		    		return;
-		    	}
-		    	
-		    	String jarName = jarPath.getFileName().toString();
-				System.out.println(jarName);
-				
-				try (var fin = new FileInputStream(jarPath.toFile())) {
-					
-					List<FileBuffer> pomFiles = new ArrayList<>(2);
-					List<Path> classFilepaths = new ArrayList<>();
-					
-					var manifest = readJarStream(fin, (entry, in) -> {
-						
-						var entryPath = Paths.get(entry.getName());
-						var filename = entryPath.getFileName().toString();
-						
-						if (!entry.isDirectory()) {
-							if (filename.equals(PomFileType.POM_XML.filename) || filename.equals(PomFileType.POM_PROPS.filename)) {
-								try {
-									var bytes = in.readAllBytes();
-									pomFiles.add(new FileBuffer(entryPath, bytes));
-								} catch (IOException e) {
-									throw new UncheckedIOException(e);
-								}
-							}
-							if (filename.endsWith(".class")) {
-								classFilepaths.add(entryPath);
-							}
-						}
-						
-//						System.out.println(entry.getName());
-//						Path path = Paths.get(entry.getName());
-						
-//						if (!entry.isDirectory() && path.getFileName().endsWith(".class")) {
-//							var classReader = createClassReader(in);
-//							
-//							System.out.println(classReader.getClassName());
-//							Type t = Type.getType(classReader.getClassName());
-//							System.out.println("  " + t.getClassName());
-//						}
-					});
-					
-					var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
-							MavenUidComponent.GROUP_ID, new HashMap<>(),
-							MavenUidComponent.ARTIFACT_ID, new HashMap<>(),
-							MavenUidComponent.VERSION, new HashMap<>()
-							);
-					
-					AnalyzerCandidateCollector collector = (Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
-						Map<String, ValueCandidate> candidates = collected.get(component);
-						
-						var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
-						var source = new ValueSource(analyzer, confidenceScore, sourceDetails);
-						candidate.addSource(source);
-					};
-					
-					classAnalyzer.analyze(collector.withAnalyzer(classAnalyzer.getType()), classFilepaths);
-					pomAnalyzer.analyze(collector.withAnalyzer(pomAnalyzer.getType()), pomFiles);
-					manifestAnalyzer.analyze(collector.withAnalyzer(manifestAnalyzer.getType()), manifest);
-					jarNameAnalyzer.analyze(collector.withAnalyzer(jarNameAnalyzer.getType()), jarName);
-					
-					var sorted = Map.<MavenUidComponent, List<ValueCandidate>>of(
-							MavenUidComponent.GROUP_ID, new ArrayList<>(),
-							MavenUidComponent.ARTIFACT_ID, new ArrayList<>(),
-							MavenUidComponent.VERSION, new ArrayList<>()
-							);
-					
-					var newScoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoreSum).reversed();
-					var sourceComparator = Comparator.comparing((ValueSource source) -> source.score).reversed();
-					
-					for (var uidComponent : MavenUidComponent.values()) {
-						var currentCollected = collected.get(uidComponent);
-						var currentSorted = sorted.get(uidComponent);
-						
-						for (var candidate : currentCollected.values()) {
-							currentSorted.add(candidate);
-							candidate.sortSources(sourceComparator);
-						}
-						currentSorted.sort(newScoreComparator);
-					}
-					
-					System.out.println();
-					printAnalysisResults(sorted);
-					System.out.println();
-					
-					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
-					var checkResults = repoChecker.checkOnline(jarPath, toCheck);
-//					for (var checkEntry : checkResults.entrySet()) {
-//						System.out.println("  " + checkEntry.getKey() + " -> " + checkEntry.getValue().name());
-//					}
-					
-					System.out.println("-".repeat(80));
-					
-				} catch (IOException e) {
-					throw new UncheckedIOException(e);
-				}
-		    });
-		} catch (IOException e) {
+			jarPaths = files
+					.filter(path -> path.getFileName().toString().endsWith(".jar"))
+					.collect(Collectors.toList());
+	    } catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
+		var jarCount = jarPaths.size();
+		var jarIndex = 0;
+		List<JarAnalysisWaitingForCompletion> waiting = new ArrayList<>(jarCount);
+		
+		// first we do offline analysis an start online analysis for all jars
+	    for (var jarPath : jarPaths) {
+	    	
+	    	if (MAX_JARS >= 0 && jarIndex >= MAX_JARS) {
+	    		break;
+	    	}
+	    	
+	    	String jarName = jarPath.getFileName().toString();
+	    	String jarHash = MavenUtil.sha256(jarPath.toFile());
+	    	Jar jar = new Jar(jarName, jarHash);
+	    	
+			LOG.debug("Analyzing Jar: '" + jarPath.toString() + "'");
+			System.out.print(StringUtil.RETURN_LINE + "Offline-Analysis: Jar " + (jarIndex + 1) + "/" + jarCount);
+			
+			try (var fin = new FileInputStream(jarPath.toFile())) {
+				
+				List<FileBuffer> pomFiles = new ArrayList<>(2);
+				List<Path> classFilepaths = new ArrayList<>();
+				
+				var manifest = readJarStream(fin, (entry, in) -> {
+					
+					var entryPath = Paths.get(entry.getName());
+					var filename = entryPath.getFileName().toString();
+					
+					if (!entry.isDirectory()) {
+						if (filename.equals(PomFileType.POM_XML.filename) || filename.equals(PomFileType.POM_PROPS.filename)) {
+							try {
+								var bytes = in.readAllBytes();
+								pomFiles.add(new FileBuffer(entryPath, bytes));
+							} catch (IOException e) {
+								throw new UncheckedIOException(e);
+							}
+						}
+						if (filename.endsWith(".class")) {
+							classFilepaths.add(entryPath);
+						}
+					}
+				});
+				
+				var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
+						MavenUidComponent.GROUP_ID, new HashMap<>(),
+						MavenUidComponent.ARTIFACT_ID, new HashMap<>(),
+						MavenUidComponent.VERSION, new HashMap<>()
+						);
+				
+				AnalyzerCandidateCollector collector = (Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
+					Map<String, ValueCandidate> candidates = collected.get(component);
+					
+					var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
+					var source = new ValueSource(analyzer, confidenceScore, sourceDetails);
+					candidate.addSource(source);
+				};
+				
+				classAnalyzer.analyze(collector.withAnalyzer(classAnalyzer.getType()), classFilepaths);
+				pomAnalyzer.analyze(collector.withAnalyzer(pomAnalyzer.getType()), pomFiles);
+				manifestAnalyzer.analyze(collector.withAnalyzer(manifestAnalyzer.getType()), manifest);
+				jarNameAnalyzer.analyze(collector.withAnalyzer(jarNameAnalyzer.getType()), jarName);
+				
+				var sorted = Map.<MavenUidComponent, List<ValueCandidate>>of(
+						MavenUidComponent.GROUP_ID, new ArrayList<>(),
+						MavenUidComponent.ARTIFACT_ID, new ArrayList<>(),
+						MavenUidComponent.VERSION, new ArrayList<>()
+						);
+				
+				var newScoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoreSum).reversed();
+				var sourceComparator = Comparator.comparing((ValueSource source) -> source.score).reversed();
+				
+				for (var uidComponent : MavenUidComponent.values()) {
+					var currentCollected = collected.get(uidComponent);
+					var currentSorted = sorted.get(uidComponent);
+					
+					for (var candidate : currentCollected.values()) {
+						currentSorted.add(candidate);
+						candidate.sortSources(sourceComparator);
+					}
+					currentSorted.sort(newScoreComparator);
+				}
+				
+//					MavenUid tmp = new MavenUid("test", "foo", null);
+//					var checkResults = repoChecker.checkOnline(jarPath, Set.of(tmp));
+				
+				var toCheck = repoChecker.selectCandidatesToCheck(sorted);
+				
+				var toCheckWithVersion = toCheck.stream().filter(uid -> uid.version != null).collect(Collectors.toSet());
+				var toCheckNoVersion = toCheck.stream().filter(uid -> uid.version == null).collect(Collectors.toSet());
+				var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
+				var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
+				
+				waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+				
+				jarIndex++;
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+	    };
+	    
+		System.out.println();// end System.out.print
+		
+	    var onlineCheckInitialized = false;
+	    System.out.println("Online-Check initializing...");
+	    
+	    // then wait for each jar to finish online analysis to complete analysis
+	    for (var jarAnalysis : waiting) {
+	    	var jar = jarAnalysis.jar;
+	    	
+//	    	boolean groupIdAndArtifactFoundOffline =
+//	    			!jarAnalysis.offlineResult.get(MavenUidComponent.GROUP_ID).isEmpty()
+//	    			&& !jarAnalysis.offlineResult.get(MavenUidComponent.ARTIFACT_ID).isEmpty();
+	    	boolean versionsFoundOffline = !jarAnalysis.offlineResult.get(MavenUidComponent.VERSION).isEmpty();
+	    		
+	    	var checkResultsWithVersion = MavenUtil.run(() -> jarAnalysis.onlineCompletionWithVersion.get());
+	    	var checkResultsNoVersion = MavenUtil.run(() -> jarAnalysis.onlineCompletionNoVersion.get());
+	    	
+	    	// we expect either only versions being available or only versions missing
+	    	if (!checkResultsWithVersion.isEmpty() && !checkResultsNoVersion.isEmpty()) {
+	    		throw new IllegalStateException();
+	    	}
+	    	if (!versionsFoundOffline && !checkResultsWithVersion.isEmpty()) {
+	    		throw new IllegalStateException();
+	    	}
+	    	
+	    	// MavenRepoChecker initialization might be finished asynchronously before this point in time,
+    		// but we can only start to print after offline analysis is finished to not destroy RETURN_LINE printlns.
+	    	if (!onlineCheckInitialized) {
+	    		onlineCheckInitialized = true;
+	    		System.out.println("Online-Check initialized!");
+	    		System.out.println("Online-Check started.");
+	    		System.out.println();
+	    	}
+
+	    	var padding = 8;
+	    	var pad = " ".repeat(padding);
+	    	var matchPadding = 16;
+	    	var matchPad = " ".repeat(matchPadding);
+	    	System.out.println(jar.name);
+	    	
+	    	Set<UidCheck> onlineResults;
+	    	if (versionsFoundOffline) {
+	    		onlineResults = checkResultsWithVersion;
+	    	} else {
+	    		onlineResults = checkResultsNoVersion.values().stream()
+	    				.flatMap(Set::stream)
+	    				.collect(Collectors.toSet());
+	    	}
+	    	if (onlineResults.size() == 1) {
+	    		var result = onlineResults.iterator().next();
+	    		if (result.checkResult.equals(CheckResult.MATCH_EXACT_SHA)) {
+	    			System.out.println("    Found identical jar online with uid: " + result.fullUid);
+	    			System.out.println("-".repeat(80));
+	    			continue;
+	    		}
+	    	}
+	    	
+			System.out.println();
+			System.out.println("    OFFLINE RESULT");
+			printOfflineAnalysisResults(jarAnalysis.offlineResult, padding);
+			System.out.println();
+			System.out.println("    ONLINE RESULT");
+			if (onlineResults.size() >= 1) {
+				if (versionsFoundOffline) {
+					printOnlineAnalysisResults(onlineResults, padding, matchPadding);
+				} else {
+					System.out.println(pad + "Found artifactId / groupId pairs online, comparing local jar with random online versions:");
+					for (var entry : checkResultsNoVersion.entrySet()) {
+						System.out.println(pad + "  " + StringUtil.rightPad("PAIR:", matchPadding + 2) + entry.getKey());
+						printOnlineAnalysisResults(entry.getValue(), padding + 4, matchPadding);
+					}
+				}
+			} else {
+				if (versionsFoundOffline) {
+					System.out.println(pad + "?? 1");
+				} else {
+					System.out.println(pad + "Did not find any matching artifactId / groupId pair online. Attempt to look for valid versions failed!");
+				}
+			}
+			System.out.println();
+			System.out.println("-".repeat(80));
+	    }
+	    
+	    System.out.println("Analysis complete.");
 		
 		repoChecker.shutdown();
 	}
 	
-	public static void printAnalysisResults(Map<MavenUidComponent, List<ValueCandidate>> result) {
+	public static void printOnlineAnalysisResults(Set<UidCheck> checkedUids, int padding, int matchPadding) {
+		var pad = " ".repeat(padding);
+		for (var uidCheck : checkedUids) {
+			System.out.println(pad + StringUtil.leftPad(uidCheck.checkResult.name() + " FOR ", matchPadding)  + uidCheck.fullUid);
+		}
+	}
+	
+	public static void printOfflineAnalysisResults(Map<MavenUidComponent, List<ValueCandidate>> result, int padding) {
 		BiFunction<String, Integer, String> scoredValueToString =
 				(value, score) -> StringUtil.leftPad(score + "", 2) + " | " + value;
-		
+				
+		var pad = " ".repeat(padding);
 		for (var uidComponent : MavenUidComponent.values()) {
 			
 			var resultList = result.get(uidComponent);
 			
 			if (resultList.size() > 0) {
-				System.out.println("    " + uidComponent.name());
+				System.out.println(pad + uidComponent.name());
 			}
 			int valuePadding = 20;
 			for (ValueCandidate candidate : resultList) {
@@ -173,7 +280,7 @@ public class AnalyzerService {
 				
 				for (int i = 0; i < candidate.sources.size(); i++) {
 					var source = candidate.sources.get(i);
-					var valueString = "        " + StringUtil.rightPad(i == 0 ? valueAndScore : "", valuePadding + 2);
+					var valueString = pad + "    " + StringUtil.rightPad(i == 0 ? valueAndScore : "", valuePadding + 2);
 					var sourceString = " (" + source.score + " | " + source.analyzer.displayName + " -> " + source.details + ")";
 					System.out.println(valueString + sourceString);
 				}
@@ -195,6 +302,32 @@ public class AnalyzerService {
 	@FunctionalInterface
 	public static interface ValueCandidateCollector {
 		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+	}
+	
+	public static class Jar {
+		public final String name;
+		public final String sha256;
+		
+		public Jar(String name, String sha256) {
+			this.name = name;
+			this.sha256 = sha256;
+		}
+	}
+	
+	public static class JarAnalysisWaitingForCompletion {
+		public final Jar jar;
+		public final Map<MavenUidComponent, List<ValueCandidate>> offlineResult;
+		public final CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion;
+		public final CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion;
+		
+		public JarAnalysisWaitingForCompletion(Jar jar, Map<MavenUidComponent, List<ValueCandidate>> offlineResult,
+				CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion,
+				CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion) {
+			this.jar = jar;
+			this.offlineResult = offlineResult;
+			this.onlineCompletionWithVersion = onlineCompletionWithVersion;
+			this.onlineCompletionNoVersion = onlineCompletionNoVersion;
+		}
 	}
 	
 	public static enum MavenUidComponent {
@@ -220,7 +353,7 @@ public class AnalyzerService {
 		}
 		@Override
 		public String toString() {
-			return "[ " + groupId + " | " + artifactId + " | " + (version == null ? "<unknown-version>" : version) + " ]";
+			return "( " + groupId + " | " + artifactId + " | " + (version == null ? "<unknown-version>" : version) + " )";
 		}
 	}
 	
@@ -269,14 +402,6 @@ public class AnalyzerService {
 		}
 	}
 	
-	public static ClassReader createClassReader(InputStream in) {
-		try {
-			return new ClassReader(in);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
-	
 	public static Optional<Manifest> readJarStream(InputStream in, BiConsumer<JarEntry, InputStream> fileConsumer) {
 	    try (var jarIn = new JarInputStream(in, false)) {
 	    	var manifest = Optional.ofNullable(jarIn.getManifest());
@@ -302,10 +427,4 @@ public class AnalyzerService {
 //			throw new UncheckedIOException(e);
 //		}
 //	}
-	
-	public static class MyClassVisitor extends ClassVisitor {
-		protected MyClassVisitor() {
-			super(Opcodes.ASM9);
-		}
-	}
 }

@@ -2,6 +2,8 @@ package de.eitco.mavenizer;
 
 public class StringUtil {
 
+	public static final String RETURN_LINE = "\r";
+	
 	public static String rightPad(String str, int minLength) {
 		if (str.length() < minLength) {
 			int padLength = minLength - str.length();

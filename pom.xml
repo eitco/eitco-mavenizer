@@ -106,10 +106,5 @@
 			<artifactId>commons-io</artifactId>
 			<version>${version.commons-io}</version>
 		</dependency>
-		<dependency>
-			<groupId>org.ow2.asm</groupId>
-		    <artifactId>asm</artifactId>
-		    <version>${version.asm}</version>
-		</dependency>
 	</dependencies>
 </project>
