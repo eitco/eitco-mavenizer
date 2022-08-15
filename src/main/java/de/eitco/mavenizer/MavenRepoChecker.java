@@ -1,6 +1,7 @@
 package de.eitco.mavenizer;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
@@ -8,7 +9,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,20 +21,27 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.maven.artifact.repository.metadata.io.xpp3.MetadataXpp3Reader;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.apache.maven.settings.Settings;
 import org.apache.maven.settings.io.xpp3.SettingsXpp3Reader;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
 import org.eclipse.aether.impl.DefaultServiceLocator;
 import org.eclipse.aether.internal.impl.DefaultRepositorySystem;
+import org.eclipse.aether.metadata.DefaultMetadata;
+import org.eclipse.aether.metadata.Metadata;
+import org.eclipse.aether.metadata.Metadata.Nature;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.LocalRepositoryManager;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
+import org.eclipse.aether.resolution.MetadataRequest;
+import org.eclipse.aether.resolution.MetadataResult;
 import org.eclipse.aether.spi.connector.RepositoryConnectorFactory;
 import org.eclipse.aether.spi.connector.transport.TransporterFactory;
 import org.eclipse.aether.transport.file.FileTransporterFactory;
@@ -126,7 +134,7 @@ public class MavenRepoChecker {
 		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= 2; 
 		
 		int maxCount = candidatesToCheckConfig.values().stream().reduce(1, (a, b) -> a * b);// multiply config values
-		var result = new HashSet<MavenUid>(maxCount);
+		var result = new LinkedHashSet<MavenUid>(maxCount);// use linked set to make sure highest score combinations are downloaded first
 		
 		var groupIds = MavenUtil.subList(candidatesMap.get(MavenUidComponent.GROUP_ID), candidatesToCheckConfig.get(MavenUidComponent.GROUP_ID), scoreCheck);
 		for (var group : groupIds) {
@@ -152,10 +160,14 @@ public class MavenRepoChecker {
 		var result = new HashMap<MavenUid, CheckResult>();
 		String hashLocal = null;
 		
+		// TODO download should return completablefuture, all futures should be awaited together, then iterate over result files
+		fullyInitialized().join();
+		
 		for (var uid : uidCandidates) {
+			if (uid.groupId == null || uid.artifactId == null) {
+				throw new IllegalArgumentException();
+			}
 			if (uid.version != null) {
-				// TODO download should return completablefuture, all futures should be awaited together, then iterate over result files
-				fullyInitialized().join();
 				var jarResult = downloadJar(uid, false);
 				
 				if (jarResult.isPresent()) {
@@ -173,7 +185,11 @@ public class MavenRepoChecker {
 					result.put(uid, CheckResult.NO_MATCH);
 				}
 			} else {
-				// TODO get version candidates
+				// we try to get valid versions and then recurse
+				var versions = downloadVersions(uid);
+				if (!versions.isEmpty()) {
+					return checkOnline(localJarPath, selectVersionCandidates(uid, versions));
+				}
 			}
 		}
 		return result;
@@ -288,6 +304,50 @@ public class MavenRepoChecker {
 		
 		LOG.debug("Jar not found for " + uid + ".");
 		return Optional.empty();
+	}
+	
+	private List<String> downloadVersions(MavenUid uidWithoutVersion) {
+	    Metadata metadataId = new DefaultMetadata(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, "maven-metadata.xml", Nature.RELEASE);
+	    // TODO we should make sure that maven central is queried if custom remote repo does not find something
+	    var request = new MetadataRequest(metadataId, remoteRepos.get(0), null);// TODO which repo is this even
+	    
+	    List<MetadataResult> responses;
+		responses = repoSystem.resolveMetadata(repoSystemSession, List.of(request));
+		// TODO we should assert there is only one response since we sent only one request
+		// TODO how does this fail when groupId / artifactId don't exist?
+		for (var response : responses) {
+			if (!response.isResolved()) {
+				continue;
+			}
+			LOG.debug("Sucess! Versions found for " + uidWithoutVersion + " in repo: " + remoteRepos.get(0));// TODO which repo is this even
+			var metadataFile = response.getMetadata().getFile();
+			try {
+				var m = new MetadataXpp3Reader().read(new FileInputStream(metadataFile));
+				var versions = m.getVersioning().getVersions();
+				return versions;
+			} catch (IOException | XmlPullParserException e) {
+				throw new RuntimeException(e);
+			}
+		}
+		LOG.debug("Versions not found for " + uidWithoutVersion + ".");
+		return List.of();
+	}
+	
+	private Set<MavenUid> selectVersionCandidates(MavenUid uidWithoutVersion, List<String> versions) {
+		if (versions.size() == 0) {
+			throw new IllegalStateException();
+		}
+		if (versions.size() == 1) {
+			return Set.of(new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, versions.get(0)));
+		} else {
+			// we just select oldest and newest version because we don't want to download half the world
+			var latestVersion = versions.get(0);
+			var oldestVersion = versions.get(versions.size() - 1);
+			return Set.of(
+					new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, latestVersion),
+					new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, oldestVersion)
+				);
+		}
 	}
 	
 //	public void experiment(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {

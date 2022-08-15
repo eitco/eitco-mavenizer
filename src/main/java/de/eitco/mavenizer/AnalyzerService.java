@@ -220,7 +220,7 @@ public class AnalyzerService {
 		}
 		@Override
 		public String toString() {
-			return "[ " + groupId + " | " + artifactId + " | " +version + " ]";
+			return "[ " + groupId + " | " + artifactId + " | " + (version == null ? "<unknown-version>" : version) + " ]";
 		}
 	}
 	
