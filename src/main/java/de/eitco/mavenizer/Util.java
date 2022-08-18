@@ -18,7 +18,7 @@ import java.util.function.Function;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
-public class MavenUtil {
+public class Util {
 
 	@FunctionalInterface
 	public static interface BlockingSupplier<T> {

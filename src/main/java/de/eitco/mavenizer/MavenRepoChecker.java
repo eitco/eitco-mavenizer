@@ -100,7 +100,7 @@ public class MavenRepoChecker {
 	
 	
 	public MavenRepoChecker() {
-		isWindows = MavenUtil.isWindows();
+		isWindows = Util.isWindows();
 		
 		resolverServiceLocator = MavenRepositorySystemUtils.newServiceLocator();
 		
@@ -142,13 +142,13 @@ public class MavenRepoChecker {
 		int maxCount = candidatesToCheckConfig.values().stream().reduce(1, (a, b) -> a * b);// multiply config values
 		var result = new LinkedHashSet<MavenUid>(maxCount);// use linked set to make sure highest score combinations are downloaded first
 		
-		var groupIds = MavenUtil.subList(candidatesMap.get(MavenUidComponent.GROUP_ID), candidatesToCheckConfig.get(MavenUidComponent.GROUP_ID), scoreCheck);
+		var groupIds = Util.subList(candidatesMap.get(MavenUidComponent.GROUP_ID), candidatesToCheckConfig.get(MavenUidComponent.GROUP_ID), scoreCheck);
 		for (var group : groupIds) {
 			
-			var artifactIds = MavenUtil.subList(candidatesMap.get(MavenUidComponent.ARTIFACT_ID), candidatesToCheckConfig.get(MavenUidComponent.ARTIFACT_ID), scoreCheck);
+			var artifactIds = Util.subList(candidatesMap.get(MavenUidComponent.ARTIFACT_ID), candidatesToCheckConfig.get(MavenUidComponent.ARTIFACT_ID), scoreCheck);
 			for (var artifact : artifactIds) {
 				
-				var versions = MavenUtil.subList(candidatesMap.get(MavenUidComponent.VERSION), candidatesToCheckConfig.get(MavenUidComponent.VERSION), scoreCheck);
+				var versions = Util.subList(candidatesMap.get(MavenUidComponent.VERSION), candidatesToCheckConfig.get(MavenUidComponent.VERSION), scoreCheck);
 				if (versions.isEmpty()) {
 					result.add(new MavenUid(group.value, artifact.value, null));
 				} else {
@@ -174,7 +174,7 @@ public class MavenRepoChecker {
 				var jarResult = downloadJar(uid, false);
 				
 				if (jarResult.isPresent()) {
-					var onlineJarHash = MavenUtil.sha256(jarResult.get());
+					var onlineJarHash = Util.sha256(jarResult.get());
 					if (localJarHash.equals(onlineJarHash)) {
 						return Set.of(new UidCheck(uid, CheckResult.MATCH_EXACT_SHA));
 					} else {
@@ -201,7 +201,7 @@ public class MavenRepoChecker {
 				var versions = downloadVersions(uid);
 				if (!versions.isEmpty()) {
 					var selectedVersions = selectVersionCandidates(uid, versions);
-					var fullUidResults = MavenUtil.run(() -> checkOnline(localJarHash, selectedVersions).get());
+					var fullUidResults = Util.run(() -> checkOnline(localJarHash, selectedVersions).get());
 					result.put(uid, fullUidResults);
 				}
 			}
@@ -214,7 +214,7 @@ public class MavenRepoChecker {
 	}
 	
 	public void shutdown() {
-		MavenUtil.run(() -> {
+		Util.run(() -> {
 			onRemoteReposConfigured.cancel(true);
 			onSettingsFileWritten.get(5, TimeUnit.SECONDS);
 		});
@@ -248,7 +248,7 @@ public class MavenRepoChecker {
 	private void readRepoSettings(Path settingsFile) {
 		LOG.debug("Parsing repos from '" + settingsFile.toString() + "'.");
 		
-		Settings settings = MavenUtil.parse(in -> new SettingsXpp3Reader().read(in), settingsFile.toFile());
+		Settings settings = Util.parse(in -> new SettingsXpp3Reader().read(in), settingsFile.toFile());
 
 		for (var profile : settings.getProfiles()) {
 			if (profile.getActivation().isActiveByDefault()) {
@@ -332,7 +332,7 @@ public class MavenRepoChecker {
 			}
 			LOG.debug("Sucess! Versions found for " + uidWithoutVersion + " in repo: " + response.getRequest().getRepository());
 			var metadataFile = response.getMetadata().getFile();
-			var metadata = MavenUtil.parse(in -> new MetadataXpp3Reader().read(in), metadataFile);
+			var metadata = Util.parse(in -> new MetadataXpp3Reader().read(in), metadataFile);
 			var versions = metadata.getVersioning().getVersions();
 			return versions;
 		}

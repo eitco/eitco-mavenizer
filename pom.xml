@@ -94,6 +94,13 @@
 			<artifactId>maven-resolver-spi</artifactId>
 			<version>${version.maven-resolver}</version>
 		</dependency>
+
+		<!-- CLI -->
+		<dependency>
+			<groupId>com.beust</groupId>
+			<artifactId>jcommander</artifactId>
+			<version>1.82</version>
+		</dependency>
 		
 		<!-- Other -->
 		<dependency>
