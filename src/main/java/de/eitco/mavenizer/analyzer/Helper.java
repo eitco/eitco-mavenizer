@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyse;
+package de.eitco.mavenizer.analyzer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +25,7 @@ public class Helper {
 		public final static String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
 		public final static String PATTERN_CLASSIFIER = "(([0-9]+)|([a-zA-Z]+))";
 		
-		public final static String PATTERN_VERSION = "[0-9]+(\\.[0-9]+)*(\\.[A-Z]+)?";// yes, "3.1.SONATYPE" is a version used in reality
+		public final static String PATTERN_VERSION = "[0-9]+(\\.[0-9]+)*((\\.[A-Z]+)|(\\-[A-Z]+))?";// yes, "3.1.SONATYPE" is a version used in reality
 		public final static String PATTERN_CLASSIFIERS = "(" + PATTERN_CLASSIFIER + ")(\\-" + PATTERN_CLASSIFIER + ")?";// more than 2 classifiers is unrealistic
 		
 		// specific patterns to test values with, using capture groups to extract substrings

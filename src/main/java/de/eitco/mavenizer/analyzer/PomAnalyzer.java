@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyse;
+package de.eitco.mavenizer.analyzer;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

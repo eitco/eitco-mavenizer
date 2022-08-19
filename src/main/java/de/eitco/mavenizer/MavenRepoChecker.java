@@ -27,7 +27,9 @@ import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
 import org.eclipse.aether.impl.DefaultServiceLocator;
+import org.eclipse.aether.internal.impl.DefaultRepositoryLayoutProvider;
 import org.eclipse.aether.internal.impl.DefaultRepositorySystem;
+import org.eclipse.aether.internal.impl.Maven2RepositoryLayoutFactory;
 import org.eclipse.aether.metadata.DefaultMetadata;
 import org.eclipse.aether.metadata.Metadata;
 import org.eclipse.aether.metadata.Metadata.Nature;
@@ -41,6 +43,7 @@ import org.eclipse.aether.resolution.MetadataRequest;
 import org.eclipse.aether.resolution.MetadataResult;
 import org.eclipse.aether.spi.connector.RepositoryConnectorFactory;
 import org.eclipse.aether.spi.connector.transport.TransporterFactory;
+import org.eclipse.aether.transfer.NoRepositoryLayoutException;
 import org.eclipse.aether.transport.file.FileTransporterFactory;
 import org.eclipse.aether.transport.http.HttpTransporterFactory;
 import org.slf4j.Logger;
@@ -63,10 +66,12 @@ public class MavenRepoChecker {
 	public static class UidCheck {
 		public final MavenUid fullUid;
 		public final CheckResult checkResult;
+		public final Optional<String> url;
 		
-		public UidCheck(MavenUid fullUid, CheckResult checkResult) {
+		public UidCheck(MavenUid fullUid, CheckResult checkResult, Optional<String> url) {
 			this.fullUid = fullUid;
 			this.checkResult = checkResult;
+			this.url = url;
 		}
 	}
 	
@@ -78,6 +83,16 @@ public class MavenRepoChecker {
 		NOT_FOUND;
 	}
 	
+	private static class OnlineJarResult {
+		String url;
+		File downloaded;
+		
+		public OnlineJarResult(String url, File downloaded) {
+			this.url = url;
+			this.downloaded = downloaded;
+		}
+	}
+	
 	private final MavenUid onlineRepoTestJar = new MavenUid("junit", "junit", "4.12");
 	
 //	private final Path LOCAL_REPO_PATH = Paths.get(System.getProperty("user.home"), ".m2", "repository");
@@ -87,6 +102,7 @@ public class MavenRepoChecker {
 	private final DefaultServiceLocator resolverServiceLocator;
 	private final DefaultRepositorySystem repoSystem;
 	private final DefaultRepositorySystemSession repoSystemSession;
+	private final DefaultRepositoryLayoutProvider repoLayoutProvider;
 	
 	private final LocalRepository localTempRepo;
 	private final LocalRepositoryManager localTempRepoManager;
@@ -119,6 +135,9 @@ public class MavenRepoChecker {
 		localTempRepoManager = repoSystem.newLocalRepositoryManager(repoSystemSession, localTempRepo);
 		
 		repoSystemSession.setLocalRepositoryManager(localTempRepoManager);
+		
+		repoLayoutProvider = new DefaultRepositoryLayoutProvider();
+		repoLayoutProvider.addRepositoryLayoutFactory(new Maven2RepositoryLayoutFactory());
 		
 		// delete temp repo from previous runs
 		onLocalRepoDeleted = deleteLocalTempRepo();
@@ -183,15 +202,15 @@ public class MavenRepoChecker {
 				var jarResult = downloadJar(uid, false);
 				
 				if (jarResult.isPresent()) {
-					var onlineJarHash = Util.sha256(jarResult.get());
+					var onlineJarHash = Util.sha256(jarResult.get().downloaded);
 					if (localJarHash.equals(onlineJarHash)) {
-						return Set.of(new UidCheck(uid, CheckResult.FOUND_MATCH_EXACT_SHA));
+						return Set.of(new UidCheck(uid, CheckResult.FOUND_MATCH_EXACT_SHA, Optional.of(jarResult.get().url)));
 					} else {
 						// TODO check classes
-						result.add(new UidCheck(uid, CheckResult.FOUND_NO_MATCH));
+						result.add(new UidCheck(uid, CheckResult.FOUND_NO_MATCH, Optional.empty()));
 					}
 				} else {
-					result.add(new UidCheck(uid, CheckResult.NOT_FOUND));
+					result.add(new UidCheck(uid, CheckResult.NOT_FOUND, Optional.empty()));
 				}
 			}
 			return result;
@@ -301,7 +320,7 @@ public class MavenRepoChecker {
 		} 
 	}
 	
-	private Optional<File> downloadJar(MavenUid uid, boolean throwOnFail) {
+	private Optional<OnlineJarResult> downloadJar(MavenUid uid, boolean throwOnFail) {
 		
 		var artifact = new DefaultArtifact(uid.groupId, uid.artifactId, "jar", uid.version);
 		var request = new ArtifactRequest(artifact, remoteRepos, null);
@@ -310,7 +329,14 @@ public class MavenRepoChecker {
 			response = repoSystem.resolveArtifact(repoSystemSession, request);
 			if (response.isResolved()) {
 				LOG.debug("Sucess! Jar found for " + uid + " in repo: " + response.getRepository());
-				return Optional.of(response.getArtifact().getFile());
+				try {
+					var remote = (RemoteRepository) response.getRepository();
+					var layout = repoLayoutProvider.newRepositoryLayout(repoSystemSession, remote);
+					var url = remote.getUrl() + layout.getLocation(artifact, false).toString();
+					return Optional.of(new OnlineJarResult(url, response.getArtifact().getFile()));
+				} catch (NoRepositoryLayoutException e) {
+					throw new RuntimeException();
+				}
 			} else {
 				if (throwOnFail) {
 					throw new UncheckedIOException(new IOException("Could not resolve artifact '" + artifact + "' online!"));

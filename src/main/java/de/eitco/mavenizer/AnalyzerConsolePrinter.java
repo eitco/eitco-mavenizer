@@ -15,7 +15,7 @@ import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
 import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
 import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
 
-public class AnalysisResultPrinter {
+public class AnalyzerConsolePrinter {
 	
 	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, Optional<JarReport> autoSelected, boolean forceDetailedOutput, boolean offline) {
 		
@@ -91,7 +91,8 @@ public class AnalysisResultPrinter {
 	public void printUidChecks(Set<UidCheck> checkedUids, int padding, int matchPadding) {
 		var pad = " ".repeat(padding);
 		for (var uidCheck : checkedUids) {
-			System.out.println(pad + StringUtil.leftPad(uidCheck.checkResult.name() + " FOR ", matchPadding)  + uidCheck.fullUid);
+			var url = uidCheck.url.isPresent() ? (" AT " + uidCheck.url.get()) : "";
+			System.out.println(pad + StringUtil.leftPad(uidCheck.checkResult.name() + "   FOR ", matchPadding)  + uidCheck.fullUid + url);
 		}
 	}
 	

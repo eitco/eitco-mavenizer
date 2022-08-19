@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyse;
+package de.eitco.mavenizer.analyzer;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;

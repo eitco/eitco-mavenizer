@@ -43,20 +43,20 @@ import de.eitco.mavenizer.AnalyzerReport.JarReport;
 import de.eitco.mavenizer.Cli.ResettableCommand;
 import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
 import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
-import de.eitco.mavenizer.analyse.ClassFilepathAnalyzer;
-import de.eitco.mavenizer.analyse.Helper.Regex;
-import de.eitco.mavenizer.analyse.JarFilenameAnalyzer;
-import de.eitco.mavenizer.analyse.ManifestAnalyzer;
-import de.eitco.mavenizer.analyse.PomAnalyzer;
-import de.eitco.mavenizer.analyse.PomAnalyzer.FileBuffer;
-import de.eitco.mavenizer.analyse.PomAnalyzer.PomFileType;
+import de.eitco.mavenizer.analyzer.ClassFilepathAnalyzer;
+import de.eitco.mavenizer.analyzer.Helper.Regex;
+import de.eitco.mavenizer.analyzer.JarFilenameAnalyzer;
+import de.eitco.mavenizer.analyzer.ManifestAnalyzer;
+import de.eitco.mavenizer.analyzer.PomAnalyzer;
+import de.eitco.mavenizer.analyzer.PomAnalyzer.FileBuffer;
+import de.eitco.mavenizer.analyzer.PomAnalyzer.PomFileType;
 
 public class AnalyzerService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(AnalyzerService.class);
 	
 	private final AnalysisArgs args = new AnalysisArgs();
-	private final AnalysisResultPrinter printer = new AnalysisResultPrinter();
+	private final AnalyzerConsolePrinter printer = new AnalyzerConsolePrinter();
 	
 	private final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
 	private final JarFilenameAnalyzer jarNameAnalyzer = new JarFilenameAnalyzer();
@@ -325,6 +325,7 @@ public class AnalyzerService {
 	    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
 		var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
 		System.out.println("Writing report file: " + reportFile.toAbsolutePath());
+		LOG.info("Writing report file: " + reportFile.toAbsolutePath());
 	    
 	    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
 	    var report = new AnalyzerReport(generalInfo, jarReports);
