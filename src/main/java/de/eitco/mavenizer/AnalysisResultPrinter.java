@@ -2,11 +2,14 @@ package de.eitco.mavenizer;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import de.eitco.mavenizer.AnalyzerReport.JarReport;
 import de.eitco.mavenizer.AnalyzerService.JarAnalysisWaitingForCompletion;
+import de.eitco.mavenizer.AnalyzerService.MavenUid;
 import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
 import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
@@ -14,25 +17,29 @@ import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
 
 public class AnalysisResultPrinter {
 	
-	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, boolean forceDetailedOutput) {
+	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, Optional<JarReport> autoSelected, boolean forceDetailedOutput, boolean offline) {
 		
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
 		
-		boolean versionsFoundOffline = !jarAnalysis.offlineResult.get(MavenUidComponent.VERSION).isEmpty();
+    	var offlineResult = jarAnalysis.offlineResult;
+		boolean noVersionsFoundOffline = offlineResult.get(MavenUidComponent.VERSION).isEmpty();
+		boolean notEnoughInfoFoundOffline =
+				offlineResult.get(MavenUidComponent.GROUP_ID).isEmpty()
+				|| offlineResult.get(MavenUidComponent.ARTIFACT_ID).isEmpty();
 		
 		// we expect either only versions being available or only versions missing
     	if (!checkResultsWithVersion.isEmpty() && !checkResultsNoVersion.isEmpty()) {
     		throw new IllegalStateException();
     	}
-    	if (!versionsFoundOffline && !checkResultsWithVersion.isEmpty()) {
+    	if (noVersionsFoundOffline && !checkResultsWithVersion.isEmpty()) {
     		throw new IllegalStateException();
     	}
     	
     	System.out.println(jarAnalysis.jar.name);
     	
     	Set<UidCheck> onlineResults;
-    	if (versionsFoundOffline) {
+    	if (!noVersionsFoundOffline) {
     		onlineResults = checkResultsWithVersion;
     	} else {
     		onlineResults = checkResultsNoVersion.values().stream()
@@ -40,17 +47,14 @@ public class AnalysisResultPrinter {
     				.collect(Collectors.toSet());
     	}
     	
-    	boolean identicalJarFoundOnline = false;
-    	if (onlineResults.size() == 1) {
-    		var result = onlineResults.iterator().next();
-    		identicalJarFoundOnline = result.checkResult.equals(CheckResult.MATCH_EXACT_SHA);
-    	}
-    	
     	// if result is clear, we skip detailed output
-    	if (identicalJarFoundOnline && !forceDetailedOutput) {
-    		System.out.println("    Found identical jar online with uid: " + onlineResults.iterator().next().fullUid);
-			System.out.println("-".repeat(80));
-			return;
+    	if (autoSelected.isPresent()) {
+    		printAutoSelected(4, autoSelected.get().result, autoSelected.get().onlineCheck);
+    		if (forceDetailedOutput) {
+    			System.out.println("    Forced details:");
+    		} else {
+    			return;
+    		}
     	}
     	
     	var padding = 8;
@@ -60,31 +64,28 @@ public class AnalysisResultPrinter {
 		System.out.println();
 		System.out.println("    OFFLINE RESULT");
 		printOfflineAnalysisResults(jarAnalysis.offlineResult, padding);
-		System.out.println();
-		System.out.println("    ONLINE RESULT");
-		if (identicalJarFoundOnline && forceDetailedOutput) {
-			System.out.println("      Found identical jar online with uid: " + onlineResults.iterator().next().fullUid);
-			System.out.println("      Details:");
-		}
-		if (onlineResults.size() >= 1) {
-			if (versionsFoundOffline) {
-				printUidChecks(onlineResults, padding, matchPadding);
+		if (!offline) {
+			System.out.println();
+			System.out.println("    ONLINE RESULT");
+			if (onlineResults.size() >= 1) {
+				if (!noVersionsFoundOffline) {
+					printUidChecks(onlineResults, padding, matchPadding);
+				} else {
+					System.out.println(pad + "Found artifactId / groupId pairs online, comparing local jar with random online versions:");
+					for (var entry : checkResultsNoVersion.entrySet()) {
+						System.out.println(pad + "  " + StringUtil.rightPad("PAIR:", matchPadding + 2) + entry.getKey());
+						printUidChecks(entry.getValue(), padding + 4, matchPadding);
+					}
+				}
 			} else {
-				System.out.println(pad + "Found artifactId / groupId pairs online, comparing local jar with random online versions:");
-				for (var entry : checkResultsNoVersion.entrySet()) {
-					System.out.println(pad + "  " + StringUtil.rightPad("PAIR:", matchPadding + 2) + entry.getKey());
-					printUidChecks(entry.getValue(), padding + 4, matchPadding);
+				if (notEnoughInfoFoundOffline) {
+					System.out.println(pad + "Did not gather enough information to attempt online search!");
+				} else {
+					System.out.println(pad + "Did not find any matching artifactId / groupId pair online. Attempt to look for valid versions failed!");
 				}
 			}
-		} else {
-			if (versionsFoundOffline) {
-				System.out.println(pad + "?? 1");
-			} else {
-				System.out.println(pad + "Did not find any matching artifactId / groupId pair online. Attempt to look for valid versions failed!");
-			}
 		}
 		System.out.println();
-		System.out.println("-".repeat(80));
 	}
 	
 	public void printUidChecks(Set<UidCheck> checkedUids, int padding, int matchPadding) {
@@ -123,6 +124,26 @@ public class AnalysisResultPrinter {
 					System.out.println(valueString + sourceString);
 				}
 			}
+		}
+	}
+	
+	public void printJarEndSeparator() {
+		System.out.println("-".repeat(80));
+	}
+	
+	private void printAutoSelected(int padding, MavenUid selected, CheckResult checkResult) {
+		var pad = " ".repeat(padding);
+		if (checkResult == null || checkResult.equals(CheckResult.FOUND_NO_MATCH) || checkResult.equals(CheckResult.NOT_FOUND)) {
+			System.out.println(pad + "Automatically selected values: " + selected);
+		}
+		if (checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA)) {
+			System.out.println(pad + "Found identical jar online with uid: " + selected);
+		} else if (checkResult.equals(CheckResult.FOUND_MATCH_EXACT_CLASSNAMES)) {
+			// TODO
+			System.out.println(pad + "Automatically selected values: " + selected);
+		} else if (checkResult.equals(CheckResult.FOUND_MATCH_SUPERSET_CLASSNAMES)) {
+			// TODO
+			System.out.println(pad + "Automatically selected values: " + selected);
 		}
 	}
 }

@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
+
 public class Helper {
 
 	public static class Regex {
@@ -13,6 +15,7 @@ public class Helper {
 		public final static String CAP_GROUP_CLASS = "class";
 		public final static String CAP_GROUP_ARTIFACT_ID = "artifactId";
 		public final static String CAP_GROUP_VERSION = "version";
+		public final static String CAP_GROUP_GROUP_ID = "groupId";
 		
 		// reusable patterns
 		public final static String PATTERN_CLASS = "[A-Z]\\w*";
@@ -44,6 +47,12 @@ public class Helper {
 		public final static String ATTRIBUTE_VERSION =
 				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
 		
+		public final static String GROUP_ID = 
+				"^(?<" + CAP_GROUP_GROUP_ID + ">" + PATTERN_PACKAGE + ")$";// package has basically same syntax as groupId, change if untrue
+		
+		public final static String VERSION =
+				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")$";
+		
 		// precompiled
 		public final static Pattern packageWithOptionalClass = Pattern.compile(PACKAGE_WITH_OPTIONAL_CLASS);
 		public final static Pattern packageStrictWithOptionalClass = Pattern.compile(PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS);
@@ -51,6 +60,17 @@ public class Helper {
 		public final static Pattern optionalPackageWithArtifactIdAsLeaf = Pattern.compile(OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_AS_LEAF);
 		public final static Pattern jarFilenameVersionSuffix = Pattern.compile(JAR_FILENAME_VERSION_SUFFIX);
 		public final static Pattern attributeVersion = Pattern.compile(ATTRIBUTE_VERSION);
+		public final static Pattern groupId = Pattern.compile(GROUP_ID);
+		public final static Pattern version = Pattern.compile(VERSION);
+		
+		public static Pattern getPattern(MavenUidComponent component) {
+			switch(component) {
+			case GROUP_ID: return Regex.groupId;
+			case ARTIFACT_ID: return Regex.artifactId;
+			case VERSION: return Regex.version;
+			}
+			throw new IllegalStateException();
+		}
 	}
 
 	public static class CandidateExtractionHelper {

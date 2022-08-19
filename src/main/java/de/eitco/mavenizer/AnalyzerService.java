@@ -8,19 +8,26 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,10 +36,15 @@ import org.slf4j.LoggerFactory;
 
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import de.eitco.mavenizer.AnalyzerReport.AnalysisInfo;
+import de.eitco.mavenizer.AnalyzerReport.JarReport;
 import de.eitco.mavenizer.Cli.ResettableCommand;
+import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
 import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
 import de.eitco.mavenizer.analyse.ClassFilepathAnalyzer;
+import de.eitco.mavenizer.analyse.Helper.Regex;
 import de.eitco.mavenizer.analyse.JarFilenameAnalyzer;
 import de.eitco.mavenizer.analyse.ManifestAnalyzer;
 import de.eitco.mavenizer.analyse.PomAnalyzer;
@@ -51,7 +63,7 @@ public class AnalyzerService {
 	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
 	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	
-	private final MavenRepoChecker repoChecker = new MavenRepoChecker();
+	private MavenRepoChecker repoChecker = null;
 
 
 	@Parameters(commandDescription = "Analyze jars interactively to generate report with maven uid for each jar.")
@@ -75,9 +87,6 @@ public class AnalyzerService {
 		
 		@Parameter(order = 5, names = "-limit", description = "If set to a positive number, only that many jars will be analyzed.")
 		public int limit;
-		
-//		boolean forceInteractiveMode;
-//		int scoreThreshold;
 		
 		public AnalysisArgs() {
 			setDefaults();
@@ -118,6 +127,10 @@ public class AnalyzerService {
 			if (!dir.toFile().isDirectory()) {
 				return Optional.of("Could not find report file parent directory '" + dir + "'!");
 			}
+			if (path.toFile().exists()) {
+				// since filename arg might not contain datetime pattern, we need to check for existing files
+				return Optional.of("File '" + path + "' already exists!");
+			}
 		}
 		return Optional.empty();
 	}
@@ -135,6 +148,13 @@ public class AnalyzerService {
 				);
 			return errors;
 		});
+		
+		if (!args.offline) {
+			repoChecker = new MavenRepoChecker();
+		} else {
+			System.out.println("ONLINE ANALYSIS DISABLED! - Analyzer will not be able to auto-select values for matching jars found online!");
+			cli.askUserToContinue("");
+		}
 		
 		System.out.println("Offline-Analysis started.");
 		
@@ -238,17 +258,21 @@ public class AnalyzerService {
 					currentSorted.sort(newScoreComparator);
 				}
 				
-//					MavenUid tmp = new MavenUid("test", "foo", null);
-//					var checkResults = repoChecker.checkOnline(jarPath, Set.of(tmp));
-				
-				var toCheck = repoChecker.selectCandidatesToCheck(sorted);
-				
-				var toCheckWithVersion = toCheck.stream().filter(uid -> uid.version != null).collect(Collectors.toSet());
-				var toCheckNoVersion = toCheck.stream().filter(uid -> uid.version == null).collect(Collectors.toSet());
-				var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
-				var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
-				
-				waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+				if (!args.offline) {
+					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
+					
+					var toCheckWithVersion = toCheck.stream().filter(uid -> uid.version != null).collect(Collectors.toSet());
+					var toCheckNoVersion = toCheck.stream().filter(uid -> uid.version == null).collect(Collectors.toSet());
+					var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
+					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
+					
+					waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+				} else {
+					var checkResultsWithVersion = CompletableFuture.completedFuture(Set.<UidCheck>of());
+					var checkResultsNoVersion = CompletableFuture.completedFuture(Map.<MavenUid, Set<UidCheck>>of());
+					
+					waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+				}
 				
 				jarIndex++;
 			} catch (IOException e) {
@@ -261,6 +285,8 @@ public class AnalyzerService {
 	    var onlineCheckInitialized = false;
 	    System.out.println("Online-Check initializing...");
 	    
+	    var jarReports = new ArrayList<JarReport>(waiting.size());
+	    
 	    // then wait for each jar to finish online analysis to complete analysis
 	    for (var jarAnalysis : waiting) {
 	    	var jar = jarAnalysis.jar;
@@ -270,7 +296,7 @@ public class AnalyzerService {
 	    	if (!onlineCheckInitialized) {
 	    		onlineCheckInitialized = true;
 	    		
-		    	// join to make sure asyn stuff i done
+		    	// join to make sure async stuff is done
 		    	jarAnalysis.onlineCompletionWithVersion.join();
 		    	jarAnalysis.onlineCompletionNoVersion.join();
 	    		
@@ -279,12 +305,171 @@ public class AnalyzerService {
 	    		System.out.println();
 	    	}
 	    	
-	    	printer.printResults(jarAnalysis, args.forceDetailedOutput);
+	    	var selected = autoSelectCandidate(jarAnalysis);
+	    	printer.printResults(jarAnalysis, selected, args.forceDetailedOutput, args.offline);
+	    	
+	    	if (selected.isEmpty()) {
+	    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
+	    		if (selectedUid.isPresent()) {
+	    			selected = Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, null, selectedUid.get()));
+	    		}
+	    	}
+	    	selected.ifPresent(jarReports::add);
+	    	
+	    	printer.printJarEndSeparator();
 	    }
 	    
 	    System.out.println("Analysis complete.");
+	    
+	    // write report
+	    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+		var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
+		System.out.println("Writing report file: " + reportFile.toAbsolutePath());
+	    
+	    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
+	    var report = new AnalyzerReport(generalInfo, jarReports);
+	    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+	    
+    	try {
+    		jsonWriter.writeValue(reportFile.toFile(), report);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 		
-		repoChecker.shutdown();
+    	if (!args.offline) {
+    		repoChecker.shutdown();
+    	}
+	}
+	
+	private Optional<JarReport> autoSelectCandidate(JarAnalysisWaitingForCompletion jarAnalysis) {
+		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
+    	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
+    	
+    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA);
+    	
+    	var foundOnline = new ArrayList<UidCheck>(1);
+    	for (var uid : checkResultsWithVersion) {
+    		if (onlineMatchToSelect.apply(uid)) {
+    			foundOnline.add(uid);
+    		}
+    	}
+    	for (var uids : checkResultsNoVersion.values()) {
+    		for (var uid : uids) {
+        		if (onlineMatchToSelect.apply(uid)) {
+        			foundOnline.add(uid);
+        		}
+    		}
+    	}
+    	if (foundOnline.size() == 1) {
+    		var uid = foundOnline.get(0);
+    		return Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, uid.checkResult, uid.fullUid));
+    	}
+    	return Optional.empty();
+	}
+	
+	private Optional<MavenUid> userSelectCandidate(Cli cli, JarAnalysisWaitingForCompletion jarAnalysis) {
+		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
+    	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
+		int proposalScoreThreshold = 4;
+		var pad = "  ";
+		
+		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {
+			String value = uid.fullUid.get(component);
+			boolean shouldBeProposed = value != null
+					&& (uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA)
+					|| uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_CLASSNAMES));
+			return shouldBeProposed ? Optional.of(value) : Optional.empty();
+		};
+		
+		System.out.println(pad + "Please complete missing groupId/artifactId/version info for this jar.");
+		System.out.println(pad + "Enter the value or enter '<number>!' to select a proposal.");
+		
+		boolean jarSkipped = false;
+		var selectedValues = new ArrayList<String>(3);
+		for (var component : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID, MavenUidComponent.VERSION)) {
+			// not using MavenUidComponent.values() to guarantee order
+			
+			// collect all proposals
+			var proposals = new LinkedHashSet<String>();
+			for (var candidate : jarAnalysis.offlineResult.get(component)) {
+				if (candidate.scoreSum >= proposalScoreThreshold) {
+					proposals.add(candidate.value);
+				}
+			}
+			for (var uid : checkResultsWithVersion) {
+				onlineUidProposal.apply(uid, component).ifPresent(proposals::add);
+			}
+			for (var entry : checkResultsNoVersion.entrySet()) {
+				// we add groupId/artifactId pair if found
+				if (!component.equals(MavenUidComponent.VERSION)) {
+					proposals.add(entry.getKey().get(component));
+				}
+	    		for (var uid : entry.getValue()) {
+	    			onlineUidProposal.apply(uid, component).ifPresent(proposals::add);
+	    		}
+	    	}
+			
+			// print proposals
+			System.out.println();
+			System.out.println(pad + "Enter " + component.xmlTagName + " or select from:");
+			var index = 0;
+			System.out.println(pad + "    " + index + "! <skip this jar>");
+			for (String proposal : proposals) {
+				index++;
+				System.out.println(pad + "    " + index + "! " + proposal);
+			}
+			
+			// ask user to choose / enter
+			boolean hasCorrectInput = false;
+			String selected;
+			do {
+				String inputString = cli.scanner.nextLine().trim();
+				try {
+					if (inputString.endsWith("!")) {
+						var selectedIndex = Integer.parseInt(inputString.substring(0, inputString.length() - 1));
+						if (selectedIndex == 0) {
+							selected = null;
+							jarSkipped = true;
+							break;
+						} else {
+							selected = List.copyOf(proposals).get(selectedIndex - 1);
+						}
+					} else {
+						selected = inputString;
+					}
+				} catch(NumberFormatException e) {
+					selected = inputString;
+				}
+				Pattern pattern = Regex.getPattern(component);
+				Matcher matcher = pattern.matcher(selected);
+				if (matcher.find()) {
+					hasCorrectInput = true;
+				} else {
+					System.out.println("  Given value does not seem to be a valid " + component.xmlTagName + "!");
+					System.out.println("  Value must match regex: " + pattern.toString());
+				}
+			} while (!hasCorrectInput);
+			
+			if (jarSkipped) {
+				break;
+			}
+			selectedValues.add(selected);
+		}
+		
+		Optional<MavenUid> result;
+		if (jarSkipped) {
+			System.out.println(pad + "Skipped! Jar '" + jarAnalysis.jar.name + "' will not appear in result report!");
+			result = Optional.empty();
+		} else {
+			var selectedUid = new MavenUid(selectedValues.get(0), selectedValues.get(1), selectedValues.get(2));
+			System.out.println();
+			System.out.println(pad + "Final values: " + selectedUid);
+			System.out.println(pad + "Note that any mistakes can be fixed manually in the report file.");
+			result = Optional.of(selectedUid);
+		}
+		cli.askUserToContinue(pad);
+		
+		return result;
 	}
 	
 	@FunctionalInterface
@@ -349,6 +534,14 @@ public class AnalyzerService {
 			this.groupId = groupId;
 			this.artifactId = artifactId;
 			this.version = version;
+		}
+		String get(MavenUidComponent component) {
+			switch(component) {
+			case ARTIFACT_ID: return artifactId;
+			case GROUP_ID: return groupId;
+			case VERSION: return version;
+			}
+			throw new IllegalStateException();
 		}
 		@Override
 		public String toString() {

@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.maven.artifact.repository.metadata.io.xpp3.MetadataXpp3Reader;
@@ -70,10 +71,11 @@ public class MavenRepoChecker {
 	}
 	
 	public static enum CheckResult {
-		MATCH_EXACT_SHA,
-		MATCH_EXACT_CLASSNAMES,
-		MATCH_SUPERSET_CLASSNAMES,
-		NO_MATCH;
+		FOUND_MATCH_EXACT_SHA,
+		FOUND_MATCH_EXACT_CLASSNAMES,
+		FOUND_MATCH_SUPERSET_CLASSNAMES,
+		FOUND_NO_MATCH,
+		NOT_FOUND;
 	}
 	
 	private final MavenUid onlineRepoTestJar = new MavenUid("junit", "junit", "4.12");
@@ -136,6 +138,13 @@ public class MavenRepoChecker {
 		return onOnlineAccessChecked;
 	}
 	
+	public List<String> getRemoteRepos() {
+		onRemoteReposConfigured.join();
+		return remoteRepos.stream()
+				.map(RemoteRepository::getUrl)
+				.collect(Collectors.toList());
+	}
+	
 	public Set<MavenUid> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
 		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= 2; 
 		
@@ -176,13 +185,13 @@ public class MavenRepoChecker {
 				if (jarResult.isPresent()) {
 					var onlineJarHash = Util.sha256(jarResult.get());
 					if (localJarHash.equals(onlineJarHash)) {
-						return Set.of(new UidCheck(uid, CheckResult.MATCH_EXACT_SHA));
+						return Set.of(new UidCheck(uid, CheckResult.FOUND_MATCH_EXACT_SHA));
 					} else {
 						// TODO check classes
-						result.add(new UidCheck(uid, CheckResult.NO_MATCH));
+						result.add(new UidCheck(uid, CheckResult.FOUND_NO_MATCH));
 					}
 				} else {
-					result.add(new UidCheck(uid, CheckResult.NO_MATCH));
+					result.add(new UidCheck(uid, CheckResult.NOT_FOUND));
 				}
 			}
 			return result;

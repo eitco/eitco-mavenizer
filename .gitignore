@@ -121,3 +121,4 @@ buildNumber.properties
 /jars
 /temp-m2
 /effective-settings.xml
+/*.json

@@ -10,8 +10,10 @@
     
     <version.maven>3.8.6</version.maven>
     <version.maven-resolver>1.8.1</version.maven-resolver>
-  	<version.asm>9.3</version.asm>
   	<version.commons-io>2.11.0</version.commons-io>
+  	<version.jcommander>1.82</version.jcommander>
+  	<version.jackson>2.13.3</version.jackson>
+  	<version.logback>1.2.11</version.logback>
   </properties>
   
   <dependencies>
@@ -99,14 +101,21 @@
 		<dependency>
 			<groupId>com.beust</groupId>
 			<artifactId>jcommander</artifactId>
-			<version>1.82</version>
+			<version>${version.jcommander}</version>
+		</dependency>
+		
+		<!-- Analysis Report -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>${version.jackson}</version>
 		</dependency>
 		
 		<!-- Other -->
 		<dependency>
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>
-			<version>1.2.11</version>
+			<version>${version.logback}</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-io</groupId>

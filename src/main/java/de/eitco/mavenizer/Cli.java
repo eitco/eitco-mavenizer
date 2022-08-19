@@ -1,7 +1,8 @@
 package de.eitco.mavenizer;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.function.Supplier;
@@ -33,32 +34,39 @@ public class Cli {
 	}
 	
 	public Scanner scanner;
-	public List<Runnable> setDefaults;
 	
 	private JCommander commander;
-	private Cli.DefaultArgs defaultArgs;
+	private DefaultArgs defaultArgs;
+	private Map<String, ResettableCommand> commands;
 	
 	public Cli() {
 		this.defaultArgs = new DefaultArgs();
-		this.commander = JCommander.newBuilder()
-				  .addObject(defaultArgs)
-				  .columnSize(140)
-				  .build();
+		this.commands = new HashMap<>();
+		this.commander = buildCli();
 		this.scanner = new Scanner(System.in);
-		this.setDefaults = new ArrayList<>();
-		
-		setDefaults.add(defaultArgs::setDefaults);
+	}
+	
+	private JCommander buildCli() {
+		var jCommander = JCommander.newBuilder()
+			  .addObject(defaultArgs)
+			  .columnSize(140)
+			  .build();
+		for (var entry : commands.entrySet()) {
+			jCommander.addCommand(entry.getKey(), entry.getValue());
+		}
+		return jCommander;
 	}
 	
 	public void addCommand(String name, Cli.ResettableCommand command) {
+		commands.put(name, command);
 		commander.addCommand(name, command);
-		setDefaults.add(command::setDefaults);
 	}
 	
 	public void parseArgs(String[] args) {
 		// commands need to be reset before parsing, otherwise previous values are interpreted as default values
-		for (var setDefault : setDefaults) {
-			setDefault.run();
+		defaultArgs.setDefaults();
+		for (var command : commands.values()) {
+			command.setDefaults();
 		}
 		commander.parse(args);
 	}
@@ -82,6 +90,11 @@ public class Cli {
 					args = scanArgsBlocking();
 					continue;
 				}
+				
+				// workaround for that fact that JCommander seems to remember previously passed args (??) and therefore
+				// fails with "Can only specify option <optiona> once." if invoked twice with the same paramteres.
+				commander = buildCli();
+				
 				parseArgs(args);
 				if (defaultArgs.help) {
 					printUsage();
@@ -118,5 +131,10 @@ public class Cli {
 				parseArgsOrRetry(scanArgsBlocking());
 			}
 		} while (!success);
+	}
+
+	public void askUserToContinue(String pad) {
+		System.out.println(pad + "Press Enter to continue...");
+		scanner.nextLine();
 	}
 }
