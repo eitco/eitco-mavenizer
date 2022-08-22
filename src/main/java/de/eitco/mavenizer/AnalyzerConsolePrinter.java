@@ -9,11 +9,10 @@ import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.AnalyzerReport.JarReport;
 import de.eitco.mavenizer.AnalyzerService.JarAnalysisWaitingForCompletion;
-import de.eitco.mavenizer.AnalyzerService.MavenUid;
-import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
-import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
+import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 
 public class AnalyzerConsolePrinter {
 	
@@ -92,7 +91,7 @@ public class AnalyzerConsolePrinter {
 		var pad = " ".repeat(padding);
 		for (var uidCheck : checkedUids) {
 			var url = uidCheck.url.isPresent() ? (" AT " + uidCheck.url.get()) : "";
-			System.out.println(pad + StringUtil.leftPad(uidCheck.checkResult.name() + "   FOR ", matchPadding)  + uidCheck.fullUid + url);
+			System.out.println(pad + StringUtil.leftPad(uidCheck.matchType.name() + "   FOR ", matchPadding)  + uidCheck.fullUid + url);
 		}
 	}
 	
@@ -132,17 +131,17 @@ public class AnalyzerConsolePrinter {
 		System.out.println("-".repeat(80));
 	}
 	
-	private void printAutoSelected(int padding, MavenUid selected, CheckResult checkResult) {
+	private void printAutoSelected(int padding, MavenUid selected, OnlineMatch matchType) {
 		var pad = " ".repeat(padding);
-		if (checkResult == null || checkResult.equals(CheckResult.FOUND_NO_MATCH) || checkResult.equals(CheckResult.NOT_FOUND)) {
+		if (matchType == null || matchType.equals(OnlineMatch.FOUND_NO_MATCH) || matchType.equals(OnlineMatch.NOT_FOUND)) {
 			System.out.println(pad + "Automatically selected values: " + selected);
 		}
-		if (checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA)) {
+		if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)) {
 			System.out.println(pad + "Found identical jar online with uid: " + selected);
-		} else if (checkResult.equals(CheckResult.FOUND_MATCH_EXACT_CLASSNAMES)) {
+		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSNAMES)) {
 			// TODO
 			System.out.println(pad + "Automatically selected values: " + selected);
-		} else if (checkResult.equals(CheckResult.FOUND_MATCH_SUPERSET_CLASSNAMES)) {
+		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_SUPERSET_CLASSNAMES)) {
 			// TODO
 			System.out.println(pad + "Automatically selected values: " + selected);
 		}

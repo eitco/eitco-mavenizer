@@ -2,8 +2,7 @@ package de.eitco.mavenizer;
 
 import java.util.List;
 
-import de.eitco.mavenizer.AnalyzerService.MavenUid;
-import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
+import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
 
 public class AnalyzerReport {
 	
@@ -21,10 +20,10 @@ public class AnalyzerReport {
 	public static class JarReport {
 		public String filename;
 		public String sha256;
-		public CheckResult onlineCheck;
+		public OnlineMatch onlineCheck;
 		public MavenUid result;
 		
-		public JarReport(String filename, String sha256, CheckResult onlineCheck, MavenUid result) {
+		public JarReport(String filename, String sha256, OnlineMatch onlineCheck, MavenUid result) {
 			this.filename = filename;
 			this.sha256 = sha256;
 			this.onlineCheck = onlineCheck;

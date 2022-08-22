@@ -11,8 +11,8 @@ import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
-import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
+import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 
 public class ClassFilepathAnalyzer {

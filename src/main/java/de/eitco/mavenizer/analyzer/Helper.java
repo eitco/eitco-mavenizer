@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
+import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 
 public class Helper {
 

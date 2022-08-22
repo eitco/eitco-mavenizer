@@ -17,8 +17,8 @@ import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 import de.eitco.mavenizer.AnalyzerService.Analyzer;
-import de.eitco.mavenizer.AnalyzerService.MavenUidComponent;
 import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
+import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 
 public class PomAnalyzer {
 	

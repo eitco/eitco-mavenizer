@@ -1,6 +1,5 @@
 package de.eitco.mavenizer;
 
-import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -15,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.zip.ZipInputStream;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
@@ -91,14 +91,13 @@ public class Util {
 		return result;
 	}
 	
-	public static String sha256(File file) {
-	    try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
-	    	
+	public static String sha256(InputStream in) {
+	 try {
 	    	byte[] buffer= new byte[8192];
 		    int count;
 		    MessageDigest digest = MessageDigest.getInstance("SHA-256");
 	    	
-		    while ((count = bis.read(buffer)) > 0) {
+		    while ((count = in.read(buffer)) > 0) {
 		        digest.update(buffer, 0, count);
 		    }
 		    byte[] hash = digest.digest();
@@ -108,6 +107,14 @@ public class Util {
 			throw new UncheckedIOException(e);
 		} catch (NoSuchAlgorithmException e) {
 			throw new RuntimeException(e);
+		}
+	}
+	
+	public static String sha256(File compressedFile) {
+	    try (InputStream in = new ZipInputStream(new FileInputStream(compressedFile))) {
+	    	return sha256(in);
+	    } catch (IOException e) {
+			throw new UncheckedIOException(e);
 		}
 	}
 }

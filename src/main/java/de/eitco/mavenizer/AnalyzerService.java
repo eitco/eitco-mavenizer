@@ -1,5 +1,6 @@
 package de.eitco.mavenizer;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -30,19 +31,18 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipInputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.beust.jcommander.Parameter;
-import com.beust.jcommander.Parameters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import de.eitco.mavenizer.AnalyzerReport.AnalysisInfo;
 import de.eitco.mavenizer.AnalyzerReport.JarReport;
-import de.eitco.mavenizer.Cli.ResettableCommand;
-import de.eitco.mavenizer.MavenRepoChecker.CheckResult;
+import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.analyzer.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyzer.Helper.Regex;
 import de.eitco.mavenizer.analyzer.JarFilenameAnalyzer;
@@ -53,6 +53,93 @@ import de.eitco.mavenizer.analyzer.PomAnalyzer.PomFileType;
 
 public class AnalyzerService {
 
+	public static class Jar {
+		public final String name;
+		public final String sha256;
+		
+		public Jar(String name, String sha256) {
+			this.name = name;
+			this.sha256 = sha256;
+		}
+	}
+	
+	public static enum Analyzer {
+		MANIFEST("Manifest"),
+		JAR_FILENAME("Jar-Filename"),
+		POM("Pom"),
+		CLASS_FILEPATH("Class-Filepath"),
+		MAVEN_REPO_CHECK("Repo-Check");
+		
+		public final String displayName;
+		private Analyzer(String displayName) {
+			this.displayName = displayName;
+		}
+	}
+	
+	@FunctionalInterface
+	public static interface AnalyzerCandidateCollector {
+		void addCandidate(Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+		
+		default ValueCandidateCollector withAnalyzer(Analyzer analyzer) {
+			return (component, value, confidenceScore, sourceDetails) -> {
+				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
+			};
+		}
+	}
+	
+	@FunctionalInterface
+	public static interface ValueCandidateCollector {
+		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+	}
+	
+	public static class JarAnalysisWaitingForCompletion {
+		public final Jar jar;
+		public final Map<MavenUidComponent, List<ValueCandidate>> offlineResult;
+		public final CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion;
+		public final CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion;
+		
+		public JarAnalysisWaitingForCompletion(Jar jar, Map<MavenUidComponent, List<ValueCandidate>> offlineResult,
+				CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion,
+				CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion) {
+			this.jar = jar;
+			this.offlineResult = offlineResult;
+			this.onlineCompletionWithVersion = onlineCompletionWithVersion;
+			this.onlineCompletionNoVersion = onlineCompletionNoVersion;
+		}
+	}
+	
+	public static class ValueCandidate {
+		public final String value;
+		public final List<ValueSource> sources;
+		public int scoreSum = 0;
+		
+		private final List<ValueSource> sourcesInternal = new ArrayList<>();
+		
+		public ValueCandidate(String value) {
+			this.value = value;
+			this.sources = Collections.unmodifiableList(sourcesInternal);
+		}
+		public void addSource(ValueSource source) {
+			sourcesInternal.add(source);
+			scoreSum += source.score;
+		}
+		public void sortSources(Comparator<? super ValueSource> comparator) {
+			sourcesInternal.sort(comparator);
+		}
+	}
+	
+	public static class ValueSource {
+		public final Analyzer analyzer;
+		public final int score;
+		public final String details;
+		
+		public ValueSource(Analyzer analyzer, int score, String details) {
+			this.analyzer = analyzer;
+			this.score = score;
+			this.details = details;
+		}
+	}
+	
 	private static final Logger LOG = LoggerFactory.getLogger(AnalyzerService.class);
 	
 	private final AnalysisArgs args = new AnalysisArgs();
@@ -64,76 +151,6 @@ public class AnalyzerService {
 	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	
 	private MavenRepoChecker repoChecker = null;
-
-
-	@Parameters(commandDescription = "Analyze jars interactively to generate report with maven uid for each jar.")
-	public static class AnalysisArgs implements ResettableCommand {
-		
-		public static final String PARAM_JARS = "-jars";
-		public static final String PARAM_REPORT_FILE = "-reportFile";
-		public static final String DATETIME_SUBSTITUTE = "<datetime>";
-		
-		@Parameter(order = 1, description = "<paths to jar file(s) or parent folder(s)>", required = true)
-		public List<String> jars;
-		
-		@Parameter(order = 2, names = PARAM_REPORT_FILE, description = "File path and name were result report should be created.")
-		public String reportFile;
-		
-		@Parameter(order = 3, names = "-forceDetailedOutput", description = "Show full analysis results even when jar was found online.")
-		public boolean forceDetailedOutput;
-		
-		@Parameter(order = 4, names = "-offline", description = "Disable attempts to find identical jars in remote repositories.")
-		public boolean offline;
-		
-		@Parameter(order = 5, names = "-limit", description = "If set to a positive number, only that many jars will be analyzed.")
-		public int limit;
-		
-		public AnalysisArgs() {
-			setDefaults();
-		}
-		@Override
-		public void setDefaults() {
-			jars = null;
-			reportFile = "./eito-mavenizer-report-" + DATETIME_SUBSTITUTE + ".json";
-			forceDetailedOutput = false;
-			offline = false;
-			limit = -1;
-		}
-	}
-	
-	private Optional<String> validateJars(AnalysisArgs args) {
-		if (args.jars == null) {
-			return Optional.of("Please provide parameter '" + AnalysisArgs.PARAM_JARS + "'!");
-		}
-		for (var jar : args.jars) {
-			Path path = Paths.get(jar);
-			File file = path.toFile();
-			if (!file.exists()) {
-				return Optional.of("Jar file/folder path '" + path + "' does not exist!");
-			} else {
-				if (file.isFile() && !path.getFileName().toString().toLowerCase().endsWith(".jar")) {
-					return Optional.of("Wrong file extension for file  '" + path + "'! Expected .jar extension.");
-				}
-			}
-		}
-		return Optional.empty();
-	}
-	
-	private Optional<String> validateReportFile(AnalysisArgs args) {
-		if (args.reportFile != null) {
-			var corrected = args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, "");
-			Path path = Paths.get(corrected);
-			Path dir = path.toAbsolutePath().getParent();
-			if (!dir.toFile().isDirectory()) {
-				return Optional.of("Could not find report file parent directory '" + dir + "'!");
-			}
-			if (path.toFile().exists()) {
-				// since filename arg might not contain datetime pattern, we need to check for existing files
-				return Optional.of("File '" + path + "' already exists!");
-			}
-		}
-		return Optional.empty();
-	}
 	
 	public void addCommand(Cli cli) {
 		cli.addCommand("analyze", args);
@@ -143,8 +160,8 @@ public class AnalyzerService {
 		
 		cli.validateArgsOrRetry(() -> {
 			var errors = List.of(
-					validateJars(args),
-					validateReportFile(args)
+					args.validateJars(),
+					args.validateReportFile()
 				);
 			return errors;
 		});
@@ -187,19 +204,25 @@ public class AnalyzerService {
 	    		break;
 	    	}
 	    	
-	    	String jarName = jarPath.getFileName().toString();
-	    	String jarHash = Util.sha256(jarPath.toFile());
-	    	Jar jar = new Jar(jarName, jarHash);
-	    	
 			LOG.debug("Analyzing Jar: '" + jarPath.toString() + "'");
 			System.out.print(StringUtil.RETURN_LINE + "Offline-Analysis: Jar " + (jarIndex + 1) + "/" + jarCount);
 			
 			try (var fin = new FileInputStream(jarPath.toFile())) {
 				
+				// We need two input streams because JarInputStream cannot read or expose uncompressed bytes, but we need those to create hash.
+				// We hash uncompressed butes so we know if the jar content is identical independent from jar compression level/method.
+				var compressedBytes = fin.readAllBytes();
+				InputStream compressedIn = new ByteArrayInputStream(compressedBytes);
+				InputStream uncompressedIn = new ZipInputStream(new ByteArrayInputStream(compressedBytes));
+				
+				String jarName = jarPath.getFileName().toString();
+		    	String jarHash = Util.sha256(uncompressedIn);
+		    	Jar jar = new Jar(jarName, jarHash);
+				
 				List<FileBuffer> pomFiles = new ArrayList<>(2);
 				List<Path> classFilepaths = new ArrayList<>();
 				
-				var manifest = readJarStream(fin, (entry, in) -> {
+				var manifest = readJarStream(compressedIn, (entry, in) -> {
 					
 					var entryPath = Paths.get(entry.getName());
 					var filename = entryPath.getFileName().toString();
@@ -289,7 +312,6 @@ public class AnalyzerService {
 	    
 	    // then wait for each jar to finish online analysis to complete analysis
 	    for (var jarAnalysis : waiting) {
-	    	var jar = jarAnalysis.jar;
 	    	
 	    	// MavenRepoChecker initialization might be finished asynchronously before this point in time,
     		// but we can only start to print after offline analysis is finished to not destroy RETURN_LINE printlns.
@@ -309,9 +331,11 @@ public class AnalyzerService {
 	    	printer.printResults(jarAnalysis, selected, args.forceDetailedOutput, args.offline);
 	    	
 	    	if (selected.isEmpty()) {
-	    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
-	    		if (selectedUid.isPresent()) {
-	    			selected = Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, null, selectedUid.get()));
+	    		if (!args.skipNotFound) {
+		    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
+		    		if (selectedUid.isPresent()) {
+		    			selected = Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, null, selectedUid.get()));
+		    		}
 	    		}
 	    	}
 	    	selected.ifPresent(jarReports::add);
@@ -319,7 +343,9 @@ public class AnalyzerService {
 	    	printer.printJarEndSeparator();
 	    }
 	    
-	    System.out.println("Analysis complete.");
+	    int total = waiting.size();
+	    int skipped = total - jarReports.size();
+	    System.out.println("Analysis complete (skipped " + skipped + "/" + total + ").");
 	    
 	    // write report
 	    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
@@ -338,6 +364,7 @@ public class AnalyzerService {
 		}
 		
     	if (!args.offline) {
+    		System.out.println("Online-Check cleanup started.");
     		repoChecker.shutdown();
     	}
 	}
@@ -346,7 +373,7 @@ public class AnalyzerService {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
     	
-    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA);
+    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA);
     	
     	var foundOnline = new ArrayList<UidCheck>(1);
     	for (var uid : checkResultsWithVersion) {
@@ -363,7 +390,7 @@ public class AnalyzerService {
     	}
     	if (foundOnline.size() == 1) {
     		var uid = foundOnline.get(0);
-    		return Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, uid.checkResult, uid.fullUid));
+    		return Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, uid.matchType, uid.fullUid));
     	}
     	return Optional.empty();
 	}
@@ -377,8 +404,8 @@ public class AnalyzerService {
 		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {
 			String value = uid.fullUid.get(component);
 			boolean shouldBeProposed = value != null
-					&& (uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_SHA)
-					|| uid.checkResult.equals(CheckResult.FOUND_MATCH_EXACT_CLASSNAMES));
+					&& (uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
+					|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSNAMES));
 			return shouldBeProposed ? Optional.of(value) : Optional.empty();
 		};
 		
@@ -471,128 +498,6 @@ public class AnalyzerService {
 		cli.askUserToContinue(pad);
 		
 		return result;
-	}
-	
-	@FunctionalInterface
-	public static interface AnalyzerCandidateCollector {
-		void addCandidate(Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
-		
-		default ValueCandidateCollector withAnalyzer(Analyzer analyzer) {
-			return (component, value, confidenceScore, sourceDetails) -> {
-				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
-			};
-		}
-	}
-	
-	@FunctionalInterface
-	public static interface ValueCandidateCollector {
-		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
-	}
-	
-	public static class Jar {
-		public final String name;
-		public final String sha256;
-		
-		public Jar(String name, String sha256) {
-			this.name = name;
-			this.sha256 = sha256;
-		}
-	}
-	
-	public static class JarAnalysisWaitingForCompletion {
-		public final Jar jar;
-		public final Map<MavenUidComponent, List<ValueCandidate>> offlineResult;
-		public final CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion;
-		public final CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion;
-		
-		public JarAnalysisWaitingForCompletion(Jar jar, Map<MavenUidComponent, List<ValueCandidate>> offlineResult,
-				CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion,
-				CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion) {
-			this.jar = jar;
-			this.offlineResult = offlineResult;
-			this.onlineCompletionWithVersion = onlineCompletionWithVersion;
-			this.onlineCompletionNoVersion = onlineCompletionNoVersion;
-		}
-	}
-	
-	public static enum MavenUidComponent {
-		GROUP_ID("groupId"),
-		ARTIFACT_ID("artifactId"),
-		VERSION("version");
-		
-		public final String xmlTagName;
-		private MavenUidComponent(String xmlTagName) {
-			this.xmlTagName = xmlTagName;
-		}
-	}
-	
-	public static class MavenUid {
-		public final String groupId;
-		public final String artifactId;
-		public final String version;
-		
-		public MavenUid(String groupId, String artifactId, String version) {
-			this.groupId = groupId;
-			this.artifactId = artifactId;
-			this.version = version;
-		}
-		String get(MavenUidComponent component) {
-			switch(component) {
-			case ARTIFACT_ID: return artifactId;
-			case GROUP_ID: return groupId;
-			case VERSION: return version;
-			}
-			throw new IllegalStateException();
-		}
-		@Override
-		public String toString() {
-			return "( " + groupId + " | " + artifactId + " | " + (version == null ? "<unknown-version>" : version) + " )";
-		}
-	}
-	
-	public static enum Analyzer {
-		MANIFEST("Manifest"),
-		JAR_FILENAME("Jar-Filename"),
-		POM("Pom"),
-		CLASS_FILEPATH("Class-Filepath"),
-		MAVEN_REPO_CHECK("Repo-Check");
-		
-		public final String displayName;
-		private Analyzer(String displayName) {
-			this.displayName = displayName;
-		}
-	}
-	
-	public static class ValueCandidate {
-		public final String value;
-		public final List<ValueSource> sources;
-		public int scoreSum = 0;
-		
-		private final List<ValueSource> sourcesInternal = new ArrayList<>();
-		
-		public ValueCandidate(String value) {
-			this.value = value;
-			this.sources = Collections.unmodifiableList(sourcesInternal);
-		}
-		public void addSource(ValueSource source) {
-			sourcesInternal.add(source);
-			scoreSum += source.score;
-		}
-		public void sortSources(Comparator<? super ValueSource> comparator) {
-			sourcesInternal.sort(comparator);
-		}
-	}
-	
-	public static class ValueSource {
-		public final Analyzer analyzer;
-		public final int score;
-		public final String details;
-		
-		public ValueSource(Analyzer analyzer, int score, String details) {
-			this.analyzer = analyzer;
-			this.score = score;
-			this.details = details;
-		}
 	}
 	
 	public static Optional<Manifest> readJarStream(InputStream in, BiConsumer<JarEntry, InputStream> fileConsumer) {
