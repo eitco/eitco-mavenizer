@@ -6,11 +6,14 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -20,6 +23,18 @@ import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 public class Util {
 
+	public static Optional<String> validateFileCanBeCreated(String pathString) {
+		Path path = Paths.get(pathString);
+		Path dir = path.toAbsolutePath().getParent();
+		if (!dir.toFile().isDirectory()) {
+			return Optional.of("Could not find parent directory '" + dir + "' to create file '" + path.getFileName() + "' in!");
+		}
+		if (path.toFile().exists()) {
+			return Optional.of("File '" + path + "' already exists!");
+		}
+		return Optional.empty();
+	}
+	
 	@FunctionalInterface
 	public static interface BlockingSupplier<T> {
 		T get() throws InterruptedException, ExecutionException, TimeoutException;

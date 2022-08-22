@@ -9,17 +9,16 @@ import java.util.Optional;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 
-import de.eitco.mavenizer.Cli;
 import de.eitco.mavenizer.Cli.ResettableCommand;
+import de.eitco.mavenizer.Util;
 
 @Parameters(commandDescription = "Analyze jars interactively to generate report with maven uid for each jar.")
 public class AnalysisArgs implements ResettableCommand {
 	
-	public static final String PARAM_JARS = "-jars";
 	public static final String PARAM_REPORT_FILE = "-reportFile";
 	public static final String DATETIME_SUBSTITUTE = "<datetime>";
 	
-	@Parameter(order = 10, description = "<paths to jar file(s) or parent folder(s)>", required = true)
+	@Parameter(order = 10, description = "<path(s) to jar file(s) or parent folder(s)>", required = true)
 	public List<String> jars;
 	
 	@Parameter(order = 20, names = PARAM_REPORT_FILE, description = "File path and name were result report should be created.")
@@ -52,9 +51,6 @@ public class AnalysisArgs implements ResettableCommand {
 	}
 	
 	public Optional<String> validateJars() {
-		if (jars == null) {
-			return Optional.of("Please provide parameter '" + AnalysisArgs.PARAM_JARS + "'!");
-		}
 		for (var jar : jars) {
 			Path path = Paths.get(jar);
 			File file = path.toFile();
@@ -72,15 +68,8 @@ public class AnalysisArgs implements ResettableCommand {
 	public Optional<String> validateReportFile() {
 		if (reportFile != null) {
 			var corrected = reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, "");
-			Path path = Paths.get(corrected);
-			Path dir = path.toAbsolutePath().getParent();
-			if (!dir.toFile().isDirectory()) {
-				return Optional.of("Could not find report file parent directory '" + dir + "'!");
-			}
-			if (path.toFile().exists()) {
-				// since filename arg might not contain datetime pattern, we need to check for existing files
-				return Optional.of("File '" + path + "' already exists!");
-			}
+			// since filename arg might not contain datetime pattern, we need to check for existing files as well as parent dir
+			return Util.validateFileCanBeCreated(corrected);
 		}
 		return Optional.empty();
 	}

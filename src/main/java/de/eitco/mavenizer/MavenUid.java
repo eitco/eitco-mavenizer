@@ -2,6 +2,9 @@ package de.eitco.mavenizer;
 
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class MavenUid {
 	
 	public static enum MavenUidComponent {
@@ -19,7 +22,11 @@ public class MavenUid {
 	public final String artifactId;
 	public final String version;
 	
-	public MavenUid(String groupId, String artifactId, String version) {
+	@JsonCreator
+	public MavenUid(
+			@JsonProperty("groupId") String groupId,
+			@JsonProperty("artifactId") String artifactId,
+			@JsonProperty("version") String version) {
 		this.groupId = groupId;
 		this.artifactId = artifactId;
 		this.version = version;

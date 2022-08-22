@@ -60,10 +60,12 @@ public class Analyzer {
 
 	public static class Jar {
 		public final String name;
+		public final String dir;
 		public final String sha256;
 		
-		public Jar(String name, String sha256) {
+		public Jar(String name, String dir, String sha256) {
 			this.name = name;
+			this.dir = dir;
 			this.sha256 = sha256;
 		}
 	}
@@ -145,6 +147,8 @@ public class Analyzer {
 		}
 	}
 	
+	public static final String COMMAND_NAME = "analyze";
+	
 	private static final Logger LOG = LoggerFactory.getLogger(Analyzer.class);
 	
 	private final AnalysisArgs args = new AnalysisArgs();
@@ -158,12 +162,12 @@ public class Analyzer {
 	private MavenRepoChecker repoChecker = null;
 	
 	public void addCommand(Cli cli) {
-		cli.addCommand("analyze", args);
+		cli.addCommand(COMMAND_NAME, args);
 	}
 	
 	public void runAnalysis(Cli cli) {
 		
-		cli.validateArgsOrRetry(() -> {
+		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
 			var errors = List.of(
 					args.validateJars(),
 					args.validateReportFile()
@@ -222,7 +226,7 @@ public class Analyzer {
 				
 				String jarName = jarPath.getFileName().toString();
 		    	String jarHash = Util.sha256(uncompressedIn);
-		    	Jar jar = new Jar(jarName, jarHash);
+		    	Jar jar = new Jar(jarName, jarPath.toAbsolutePath().getParent().toString(), jarHash);
 				
 				List<FileBuffer> pomFiles = new ArrayList<>(2);
 				List<Path> classFilepaths = new ArrayList<>();
@@ -339,7 +343,8 @@ public class Analyzer {
 	    		if (!args.skipNotFound) {
 		    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
 		    		if (selectedUid.isPresent()) {
-		    			selected = Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, null, selectedUid.get()));
+		    			var jar = jarAnalysis.jar;
+		    			selected = Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, null, selectedUid.get()));
 		    		}
 	    		}
 	    	}
@@ -395,7 +400,8 @@ public class Analyzer {
     	}
     	if (foundOnline.size() == 1) {
     		var uid = foundOnline.get(0);
-    		return Optional.of(new JarReport(jarAnalysis.jar.name, jarAnalysis.jar.sha256, uid.matchType, uid.fullUid));
+    		var jar = jarAnalysis.jar;
+    		return Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, uid.matchType, uid.fullUid));
     	}
     	return Optional.empty();
 	}

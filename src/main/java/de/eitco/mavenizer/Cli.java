@@ -80,8 +80,8 @@ public class Cli {
 		return ArgumentTokenizer.tokenize(argsString).toArray(new String[0]);
 	}
 	
-	public void parseArgsOrRetry(String[] args) {
-		boolean success = false;
+	public String parseArgsOrRetry(String[] args) {
+		String command = null;
 		do {
 			try {
 				if (args.length == 0) {
@@ -99,18 +99,19 @@ public class Cli {
 				if (defaultArgs.help) {
 					printUsage();
 					args = scanArgsBlocking();
-					continue;
+				} else {
+					command = commander.getParsedCommand();
 				}
-				success = true;
 			} catch(ParameterException e) {
 				System.out.println("Argument error: " + e.getMessage());
 				System.out.println("Enter '-help' to show descriptions.");
 				args = scanArgsBlocking();
 			}
-		} while (!success);
+		} while (command == null);
+		return command;
 	}
 	
-	public void validateArgsOrRetry(Supplier<List<Optional<String>>> validator) {
+	public void validateArgsOrRetry(String expectedCommand, Supplier<List<Optional<String>>> validator) {
 		boolean success = false;
 		do {
 			var errors = validator.get().stream()
@@ -128,7 +129,10 @@ public class Cli {
 					}
 				}
 				System.out.println("Enter '-help' to show descriptions.");
-				parseArgsOrRetry(scanArgsBlocking());
+				var command = parseArgsOrRetry(scanArgsBlocking());
+				if (!expectedCommand.equals(command)) {
+					System.out.println("To execute a different command, please restart this program.");
+				}
 			}
 		} while (!success);
 	}

@@ -11,13 +11,20 @@ public class Main {
 	}
 	
 	Analyzer analyzer = new Analyzer();
+	Generator generator = new Generator();
 	
 	public Main(String[] args) {
 		
 		Cli cli = new Cli();
 		analyzer.addCommand(cli);
-		cli.parseArgsOrRetry(args);
+		generator.addCommand(cli);
 		
-		analyzer.runAnalysis(cli);
+		var command = cli.parseArgsOrRetry(args);
+		if (Analyzer.COMMAND_NAME.equals(command)) {
+			analyzer.runAnalysis(cli);
+		}
+		if (Generator.COMMAND_NAME.equals(command)) {
+			generator.runGenerator(cli);
+		}
 	}
 }
