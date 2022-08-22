@@ -1,4 +1,4 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyze;
 
 import java.util.List;
 import java.util.Map;
@@ -7,12 +7,14 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.AnalyzerReport.JarReport;
-import de.eitco.mavenizer.AnalyzerService.JarAnalysisWaitingForCompletion;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
-import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
-import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.MavenUid;
+import de.eitco.mavenizer.StringUtil;
+import de.eitco.mavenizer.AnalysisReport.JarReport;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
+import de.eitco.mavenizer.analyze.Analyzer.JarAnalysisWaitingForCompletion;
+import de.eitco.mavenizer.analyze.Analyzer.ValueCandidate;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 
 public class AnalyzerConsolePrinter {
 	

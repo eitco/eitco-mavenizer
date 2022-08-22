@@ -2,9 +2,10 @@ package de.eitco.mavenizer;
 
 import java.util.List;
 
-import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
+import de.eitco.mavenizer.analyze.MavenRepoChecker;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 
-public class AnalyzerReport {
+public class AnalysisReport {
 	
 	public static class AnalysisInfo {
 		public boolean onlineCheckEnabled;
@@ -36,7 +37,7 @@ public class AnalyzerReport {
 	public AnalysisInfo analysisInfo;
 	public List<JarReport> jarResults;
 	
-	public AnalyzerReport(AnalysisInfo analysisInfo, List<JarReport> jarResults) {
+	public AnalysisReport(AnalysisInfo analysisInfo, List<JarReport> jarResults) {
 		this.analysisInfo = analysisInfo;
 		this.jarResults = jarResults;
 	}

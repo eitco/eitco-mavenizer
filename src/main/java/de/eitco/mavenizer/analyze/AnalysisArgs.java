@@ -1,4 +1,4 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyze;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -9,6 +9,7 @@ import java.util.Optional;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 
+import de.eitco.mavenizer.Cli;
 import de.eitco.mavenizer.Cli.ResettableCommand;
 
 @Parameters(commandDescription = "Analyze jars interactively to generate report with maven uid for each jar.")

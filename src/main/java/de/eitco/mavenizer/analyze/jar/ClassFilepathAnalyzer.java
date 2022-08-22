@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyzer;
+package de.eitco.mavenizer.analyze.jar;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -10,10 +10,10 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.AnalyzerService.Analyzer;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
+import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
+import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
 
 public class ClassFilepathAnalyzer {
 	
@@ -138,7 +138,7 @@ public class ClassFilepathAnalyzer {
 		}
 	}
 	
-	public Analyzer getType() {
-		return Analyzer.CLASS_FILEPATH;
+	public FileAnalyzer getType() {
+		return FileAnalyzer.CLASS_FILEPATH;
 	}
 }

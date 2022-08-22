@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyzer;
+package de.eitco.mavenizer.analyze.jar;
 
 import java.util.ArrayList;
 import java.util.List;

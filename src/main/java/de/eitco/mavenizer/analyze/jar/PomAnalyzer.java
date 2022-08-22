@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyzer;
+package de.eitco.mavenizer.analyze.jar;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -16,9 +16,9 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
-import de.eitco.mavenizer.AnalyzerService.Analyzer;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
+import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
+import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
 
 public class PomAnalyzer {
 	
@@ -163,7 +163,7 @@ public class PomAnalyzer {
 		return foundValues;
 	}
 	
-	public Analyzer getType() {
-		return Analyzer.POM;
+	public FileAnalyzer getType() {
+		return FileAnalyzer.POM;
 	}
 }

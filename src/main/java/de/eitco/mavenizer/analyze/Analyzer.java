@@ -1,4 +1,4 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyze;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -38,20 +38,25 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import de.eitco.mavenizer.AnalyzerReport.AnalysisInfo;
-import de.eitco.mavenizer.AnalyzerReport.JarReport;
-import de.eitco.mavenizer.MavenRepoChecker.OnlineMatch;
-import de.eitco.mavenizer.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.AnalysisReport;
+import de.eitco.mavenizer.AnalysisReport.AnalysisInfo;
+import de.eitco.mavenizer.AnalysisReport.JarReport;
+import de.eitco.mavenizer.Cli;
+import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
-import de.eitco.mavenizer.analyzer.ClassFilepathAnalyzer;
-import de.eitco.mavenizer.analyzer.Helper.Regex;
-import de.eitco.mavenizer.analyzer.JarFilenameAnalyzer;
-import de.eitco.mavenizer.analyzer.ManifestAnalyzer;
-import de.eitco.mavenizer.analyzer.PomAnalyzer;
-import de.eitco.mavenizer.analyzer.PomAnalyzer.FileBuffer;
-import de.eitco.mavenizer.analyzer.PomAnalyzer.PomFileType;
+import de.eitco.mavenizer.StringUtil;
+import de.eitco.mavenizer.Util;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.analyze.jar.ClassFilepathAnalyzer;
+import de.eitco.mavenizer.analyze.jar.Helper.Regex;
+import de.eitco.mavenizer.analyze.jar.JarFilenameAnalyzer;
+import de.eitco.mavenizer.analyze.jar.ManifestAnalyzer;
+import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
+import de.eitco.mavenizer.analyze.jar.PomAnalyzer.FileBuffer;
+import de.eitco.mavenizer.analyze.jar.PomAnalyzer.PomFileType;
 
-public class AnalyzerService {
+public class Analyzer {
 
 	public static class Jar {
 		public final String name;
@@ -63,7 +68,7 @@ public class AnalyzerService {
 		}
 	}
 	
-	public static enum Analyzer {
+	public static enum FileAnalyzer {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
@@ -71,16 +76,16 @@ public class AnalyzerService {
 		MAVEN_REPO_CHECK("Repo-Check");
 		
 		public final String displayName;
-		private Analyzer(String displayName) {
+		private FileAnalyzer(String displayName) {
 			this.displayName = displayName;
 		}
 	}
 	
 	@FunctionalInterface
 	public static interface AnalyzerCandidateCollector {
-		void addCandidate(Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+		void addCandidate(FileAnalyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
 		
-		default ValueCandidateCollector withAnalyzer(Analyzer analyzer) {
+		default ValueCandidateCollector withAnalyzer(FileAnalyzer analyzer) {
 			return (component, value, confidenceScore, sourceDetails) -> {
 				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
 			};
@@ -129,18 +134,18 @@ public class AnalyzerService {
 	}
 	
 	public static class ValueSource {
-		public final Analyzer analyzer;
+		public final FileAnalyzer analyzer;
 		public final int score;
 		public final String details;
 		
-		public ValueSource(Analyzer analyzer, int score, String details) {
+		public ValueSource(FileAnalyzer analyzer, int score, String details) {
 			this.analyzer = analyzer;
 			this.score = score;
 			this.details = details;
 		}
 	}
 	
-	private static final Logger LOG = LoggerFactory.getLogger(AnalyzerService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(Analyzer.class);
 	
 	private final AnalysisArgs args = new AnalysisArgs();
 	private final AnalyzerConsolePrinter printer = new AnalyzerConsolePrinter();
@@ -248,7 +253,7 @@ public class AnalyzerService {
 						MavenUidComponent.VERSION, new HashMap<>()
 						);
 				
-				AnalyzerCandidateCollector collector = (Analyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
+				AnalyzerCandidateCollector collector = (FileAnalyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
 					Map<String, ValueCandidate> candidates = collected.get(component);
 					
 					var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
@@ -354,7 +359,7 @@ public class AnalyzerService {
 		LOG.info("Writing report file: " + reportFile.toAbsolutePath());
 	    
 	    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
-	    var report = new AnalyzerReport(generalInfo, jarReports);
+	    var report = new AnalysisReport(generalInfo, jarReports);
 	    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
 	    
     	try {

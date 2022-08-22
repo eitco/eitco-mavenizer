@@ -25,7 +25,7 @@ public class MavenUid {
 		this.version = version;
 	}
 	
-	String get(MavenUidComponent component) {
+	public String get(MavenUidComponent component) {
 		switch(component) {
 		case ARTIFACT_ID: return artifactId;
 		case GROUP_ID: return groupId;

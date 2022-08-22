@@ -1,4 +1,4 @@
-package de.eitco.mavenizer.analyzer;
+package de.eitco.mavenizer.analyze.jar;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,9 +11,9 @@ import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.AnalyzerService.Analyzer;
-import de.eitco.mavenizer.AnalyzerService.ValueCandidateCollector;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
+import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
+import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
 
 public class ManifestAnalyzer {
 	
@@ -76,8 +76,8 @@ public class ManifestAnalyzer {
 		}
 	}
 	
-	public Analyzer getType() {
-		return Analyzer.MANIFEST;
+	public FileAnalyzer getType() {
+		return FileAnalyzer.MANIFEST;
 	}
 
 	public static enum Attribute {

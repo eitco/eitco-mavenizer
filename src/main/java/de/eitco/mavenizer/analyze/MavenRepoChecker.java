@@ -1,4 +1,4 @@
-package de.eitco.mavenizer;
+package de.eitco.mavenizer.analyze;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,8 +50,10 @@ import org.eclipse.aether.transport.http.HttpTransporterFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.eitco.mavenizer.AnalyzerService.ValueCandidate;
+import de.eitco.mavenizer.MavenUid;
+import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
+import de.eitco.mavenizer.analyze.Analyzer.ValueCandidate;
 
 public class MavenRepoChecker {
 

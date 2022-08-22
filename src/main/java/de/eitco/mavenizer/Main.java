@@ -2,13 +2,15 @@ package de.eitco.mavenizer;
 
 import java.io.IOException;
 
+import de.eitco.mavenizer.analyze.Analyzer;
+
 public class Main {
 
 	public static void main(String[] args) throws IOException {
 		new Main(args);
 	}
 	
-	AnalyzerService analyzer = new AnalyzerService();
+	Analyzer analyzer = new Analyzer();
 	
 	public Main(String[] args) {
 		
