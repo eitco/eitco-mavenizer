@@ -106,28 +106,36 @@ public class Util {
 		return result;
 	}
 	
-	public static String sha256(InputStream in) {
-	 try {
-	    	byte[] buffer= new byte[8192];
+	public static String sha256(ZipInputStream zipIn) {
+		try {
+			var digest = MessageDigest.getInstance("SHA-256");
+			while (zipIn.getNextEntry() != null) {
+				updateDigest(zipIn, digest);
+			}
+			byte[] hash = digest.digest();
+		    return new String(Base64.getEncoder().encode(hash));
+		} catch (NoSuchAlgorithmException e) {
+			throw new RuntimeException(e);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+	
+	private static void updateDigest(InputStream in, MessageDigest digest) {
+		try {
+	    	byte[] buffer= new byte[8192 * 4];
 		    int count;
-		    MessageDigest digest = MessageDigest.getInstance("SHA-256");
-	    	
 		    while ((count = in.read(buffer)) > 0) {
 		        digest.update(buffer, 0, count);
 		    }
-		    byte[] hash = digest.digest();
-		    return new String(Base64.getEncoder().encode(hash));
-		    
 	    } catch (IOException e) {
 			throw new UncheckedIOException(e);
-		} catch (NoSuchAlgorithmException e) {
-			throw new RuntimeException(e);
 		}
 	}
 	
 	public static String sha256(File compressedFile) {
-	    try (InputStream in = new ZipInputStream(new FileInputStream(compressedFile))) {
-	    	return sha256(in);
+	    try (ZipInputStream zipIn = new ZipInputStream(new FileInputStream(compressedFile))) {
+	    	return sha256(zipIn);
 	    } catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}

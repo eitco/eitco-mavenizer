@@ -219,13 +219,13 @@ public class Analyzer {
 			try (var fin = new FileInputStream(jarPath.toFile())) {
 				
 				// We need two input streams because JarInputStream cannot read or expose uncompressed bytes, but we need those to create hash.
-				// We hash uncompressed butes so we know if the jar content is identical independent from jar compression level/method.
+				// We hash uncompressed bytes so we know if the jar content is identical independent from jar compression level/method.
 				var compressedBytes = fin.readAllBytes();
 				InputStream compressedIn = new ByteArrayInputStream(compressedBytes);
-				InputStream uncompressedIn = new ZipInputStream(new ByteArrayInputStream(compressedBytes));
+				ZipInputStream unzipIn = new ZipInputStream(new ByteArrayInputStream(compressedBytes));
 				
 				String jarName = jarPath.getFileName().toString();
-		    	String jarHash = Util.sha256(uncompressedIn);
+		    	String jarHash = Util.sha256(unzipIn);
 		    	Jar jar = new Jar(jarName, jarPath.toAbsolutePath().getParent().toString(), jarHash);
 				
 				List<FileBuffer> pomFiles = new ArrayList<>(2);
@@ -340,7 +340,7 @@ public class Analyzer {
 	    	printer.printResults(jarAnalysis, selected, args.forceDetailedOutput, args.offline);
 	    	
 	    	if (selected.isEmpty()) {
-	    		if (!args.skipNotFound) {
+	    		if (args.interactive) {
 		    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
 		    		if (selectedUid.isPresent()) {
 		    			var jar = jarAnalysis.jar;
@@ -355,23 +355,28 @@ public class Analyzer {
 	    
 	    int total = waiting.size();
 	    int skipped = total - jarReports.size();
-	    System.out.println("Analysis complete (skipped " + skipped + "/" + total + ").");
+	    System.out.println("Analysis complete (" + skipped + "/" + total + " excluded from report).");
 	    
-	    // write report
-	    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
-		var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
-		System.out.println("Writing report file: " + reportFile.toAbsolutePath());
-		LOG.info("Writing report file: " + reportFile.toAbsolutePath());
-	    
-	    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
-	    var report = new AnalysisReport(generalInfo, jarReports);
-	    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
-	    
-    	try {
-    		jsonWriter.writeValue(reportFile.toFile(), report);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
+	    if (jarReports.size() >= 1) {
+	    	// write report
+		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
+			System.out.println("Writing report file: " + reportFile.toAbsolutePath());
+			LOG.info("Writing report file: " + reportFile.toAbsolutePath());
+		    
+		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
+		    var report = new AnalysisReport(generalInfo, jarReports);
+		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+		    
+	    	try {
+	    		jsonWriter.writeValue(reportFile.toFile(), report);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+	    } else {
+	    	System.out.println("Skipping report file because no jars were resolved.");
+	    	LOG.info("Skipping report file because no jars were resolved.");
+	    }
 		
     	if (!args.offline) {
     		System.out.println("Online-Check cleanup started.");

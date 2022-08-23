@@ -7,10 +7,10 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
-import de.eitco.mavenizer.MavenUid;
-import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.AnalysisReport.JarReport;
+import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
+import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.analyze.Analyzer.JarAnalysisWaitingForCompletion;
 import de.eitco.mavenizer.analyze.Analyzer.ValueCandidate;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
@@ -57,6 +57,8 @@ public class AnalyzerConsolePrinter {
     			return;
     		}
     	}
+    	System.out.println();
+    	System.out.println("    SHA_256 (uncompressed): " + jarAnalysis.jar.sha256);
     	
     	var padding = 8;
     	var pad = " ".repeat(padding);
