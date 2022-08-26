@@ -24,6 +24,8 @@
 				<artifactId>maven-assembly-plugin</artifactId>
 				<version>3.4.2</version>
 				<configuration>
+					<finalName>eitco-mavenizer</finalName>
+					<appendAssemblyId>false</appendAssemblyId>
 					<archive>
 						<manifest>
 							<mainClass>de.eitco.mavenizer.Main</mainClass>

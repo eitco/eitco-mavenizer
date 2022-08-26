@@ -157,6 +157,27 @@ public class Generator {
 			return;
 		}
 		
+		boolean areAllJarFilesValid = true;
+		for (var jar : jarReports) {
+			var jarPath = Paths.get(jar.dir).resolve(jar.filename);
+			var jarFile = jarPath.toFile();
+			if (!jarFile.exists() || !jarFile.isFile()) {
+				cli.println("Warning: Jar file not found: " + jarPath, LOG::warn);
+				areAllJarFilesValid = false;
+			} else {
+				var actualHash = Util.sha256(jarFile);
+				var expectedHash = jar.sha256;
+				if (!actualHash.equals(expectedHash)) {
+					cli.println("Warning: Found jar file has different content compared to jar from report: " + jarPath, LOG::warn);
+					areAllJarFilesValid = false;
+				}
+			}
+		}
+		if (!areAllJarFilesValid) {
+			System.out.println("Warning(s) above can be ignored, but will cause generated install script to contain incorrect file paths!");
+			cli.askUserToContinue("    ");
+		}
+		
 		if (!args.noScript) {
 			for (var scriptType : args.scriptTypes) {
 				var type = ScriptType.fileExtensions.get(scriptType);

@@ -208,7 +208,8 @@ public class Analyzer {
 				
 				String jarName = jarPath.getFileName().toString();
 		    	String jarHash = Util.sha256(unzipIn);
-		    	Jar jar = new Jar(jarName, jarPath.toAbsolutePath().getParent().toString(), jarHash);
+		    	String absoluteDir = jarPath.toAbsolutePath().normalize().getParent().toString();
+		    	Jar jar = new Jar(jarName, absoluteDir, jarHash);
 				
 				List<FileBuffer> pomFiles = new ArrayList<>(2);
 				List<Path> classFilepaths = new ArrayList<>();
