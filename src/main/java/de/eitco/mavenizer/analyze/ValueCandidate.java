@@ -5,16 +5,16 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
 
 public class ValueCandidate {
 	
 	public static class ValueSource {
-		public final FileAnalyzer analyzer;
+		public final JarAnalyzerType analyzer;
 		public final int score;
 		public final String details;
 		
-		public ValueSource(FileAnalyzer analyzer, int score, String details) {
+		public ValueSource(JarAnalyzerType analyzer, int score, String details) {
 			this.analyzer = analyzer;
 			this.score = score;
 			this.details = details;

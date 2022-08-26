@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
@@ -17,6 +18,9 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipInputStream;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
@@ -33,6 +37,33 @@ public class Util {
 			return Optional.of("File '" + path + "' already exists!");
 		}
 		return Optional.empty();
+	}
+	
+	/**
+	 * If argument contains paths to files, those files are returned.
+	 * If argument contains paths to folders, all files (non-recursively) inside those folders are also returned.
+	 * Argument can contain files and folders, but only files are returned.
+	 */
+	public static List<Path> getFiles(List<String> filesOrDirs, Predicate<Path> fileFilter) {
+		List<Path> result = new ArrayList<Path>();
+		for (var fileOrDirString : filesOrDirs) {
+			Path fileOrDirAsPath = Paths.get(fileOrDirString);
+			File fileOrDir = fileOrDirAsPath.toFile();
+			if (fileOrDir.isDirectory()) {
+				try (Stream<Path> files = Files.list(fileOrDirAsPath)) {
+					result.addAll(files
+							.filter(path -> path.toFile().isFile())
+							.filter(fileFilter)
+							.collect(Collectors.toList()));
+			    } catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			}
+			if (fileOrDir.isFile()) {
+				result.add(fileOrDirAsPath);
+			}
+		}
+		return result;
 	}
 	
 	@FunctionalInterface

@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,8 @@ import de.eitco.mavenizer.Util;
 public class MavenRepoChecker {
 
 	private static final Logger LOG = LoggerFactory.getLogger(MavenRepoChecker.class);
+	
+	private static final int ONLINE_SEARCH_THRESHOLD = 1;// minimum score a candidate value must have to be considered for online search
 	
 	Map<MavenUidComponent, Integer> candidatesToCheckConfig = Map.of(
 			MavenUidComponent.GROUP_ID, 2,
@@ -172,11 +175,11 @@ public class MavenRepoChecker {
 				.collect(Collectors.toList());
 	}
 	
-	public Set<MavenUid> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
-		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= 2; 
+	public Map<MavenUid, Map<MavenUidComponent, Integer>> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
+		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= ONLINE_SEARCH_THRESHOLD;
 		
 		int maxCount = candidatesToCheckConfig.values().stream().reduce(1, (a, b) -> a * b);// multiply config values
-		var result = new LinkedHashSet<MavenUid>(maxCount);// use linked set to make sure highest score combinations are downloaded first
+		var result = new LinkedHashMap<MavenUid, Map<MavenUidComponent, Integer>>(maxCount);// use linked to make sure highest score combinations are downloaded first
 		
 		var groupIds = Util.subList(candidatesMap.get(MavenUidComponent.GROUP_ID), candidatesToCheckConfig.get(MavenUidComponent.GROUP_ID), scoreCheck);
 		for (var group : groupIds) {
@@ -186,10 +189,19 @@ public class MavenRepoChecker {
 				
 				var versions = Util.subList(candidatesMap.get(MavenUidComponent.VERSION), candidatesToCheckConfig.get(MavenUidComponent.VERSION), scoreCheck);
 				if (versions.isEmpty()) {
-					result.add(new MavenUid(group.value, artifact.value, null));
+					var scores = Map.of(
+							MavenUidComponent.GROUP_ID, group.scoreSum,
+							MavenUidComponent.ARTIFACT_ID, artifact.scoreSum);
+					
+					result.put(new MavenUid(group.value, artifact.value, null), scores);
 				} else {
 					for (var version : versions) {
-						result.add(new MavenUid(group.value, artifact.value, version.value));
+						var scores = Map.of(
+								MavenUidComponent.GROUP_ID, group.scoreSum,
+								MavenUidComponent.ARTIFACT_ID, artifact.scoreSum,
+								MavenUidComponent.VERSION, version.scoreSum);
+						
+						result.put(new MavenUid(group.value, artifact.value, version.value), scores);
 					}
 				}
 			}
@@ -420,7 +432,7 @@ public class MavenRepoChecker {
 		if (versions.size() == 1) {
 			return Set.of(new MavenUid(uidWithoutVersion.groupId, uidWithoutVersion.artifactId, versions.get(0)));
 		} else {
-			// we just select oldest and newest version because we don't want to download half the world
+			// we just select oldest and newest version because there is no good selection strategy anyway, in most cases we hope to have found one or two versions only
 			var latestVersion = versions.get(0);
 			var oldestVersion = versions.get(versions.size() - 1);
 			return new LinkedHashSet<>(List.of(

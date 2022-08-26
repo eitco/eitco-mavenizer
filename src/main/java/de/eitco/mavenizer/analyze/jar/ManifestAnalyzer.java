@@ -12,8 +12,8 @@ import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
-import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
-import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
+import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class ManifestAnalyzer {
 	
@@ -46,7 +46,7 @@ public class ManifestAnalyzer {
 					if (version != null) {
 						var attrSource = attrName + ": '" + attrValue + "'";
 						
-						result.addCandidate(uidComponent, version, 2, attrSource);
+						result.addCandidate(uidComponent, version, 3, attrSource);
 						if (!version.equals(attrValue)) {
 							result.addCandidate(uidComponent, attrValue, 1, attrSource);
 						}
@@ -84,8 +84,8 @@ public class ManifestAnalyzer {
 		}
 	}
 	
-	public FileAnalyzer getType() {
-		return FileAnalyzer.MANIFEST;
+	public JarAnalyzerType getType() {
+		return JarAnalyzerType.MANIFEST;
 	}
 
 	public static enum Attribute {

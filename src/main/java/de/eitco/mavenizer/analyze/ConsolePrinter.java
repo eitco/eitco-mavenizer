@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.AnalysisReport.JarReport;
 import de.eitco.mavenizer.MavenUid;
@@ -15,37 +14,15 @@ import de.eitco.mavenizer.analyze.Analyzer.JarAnalysisWaitingForCompletion;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 
-public class AnalyzerConsolePrinter {
+public class ConsolePrinter {
 	
 	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, Optional<JarReport> autoSelected, boolean forceDetailedOutput, boolean offline) {
 		
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
-		
-    	var offlineResult = jarAnalysis.offlineResult;
-		boolean noVersionsFoundOffline = offlineResult.get(MavenUidComponent.VERSION).isEmpty();
-		boolean notEnoughInfoFoundOffline =
-				offlineResult.get(MavenUidComponent.GROUP_ID).isEmpty()
-				|| offlineResult.get(MavenUidComponent.ARTIFACT_ID).isEmpty();
-		
-		// we expect either only versions being available or only versions missing
-    	if (!checkResultsWithVersion.isEmpty() && !checkResultsNoVersion.isEmpty()) {
-    		throw new IllegalStateException();
-    	}
-    	if (noVersionsFoundOffline && !checkResultsWithVersion.isEmpty()) {
-    		throw new IllegalStateException();
-    	}
+    	int totalOnlineCheckCount = checkResultsWithVersion.size() + checkResultsNoVersion.size();
     	
     	System.out.println(jarAnalysis.jar.name);
-    	
-    	Set<UidCheck> onlineResults;
-    	if (!noVersionsFoundOffline) {
-    		onlineResults = checkResultsWithVersion;
-    	} else {
-    		onlineResults = checkResultsNoVersion.values().stream()
-    				.flatMap(Set::stream)
-    				.collect(Collectors.toSet());
-    	}
     	
     	// if result is clear, we skip detailed output
     	if (autoSelected.isPresent()) {
@@ -69,22 +46,22 @@ public class AnalyzerConsolePrinter {
 		if (!offline) {
 			System.out.println();
 			System.out.println("    ONLINE RESULT");
-			if (onlineResults.size() >= 1) {
-				if (!noVersionsFoundOffline) {
-					printUidChecks(onlineResults, padding, matchPadding);
-				} else {
+			if (totalOnlineCheckCount >= 1) {
+				
+				// print normal download attempts
+				printUidChecks(checkResultsWithVersion, padding + 2, matchPadding);
+				
+				// print version search + download attempts
+				if (checkResultsNoVersion.size() >= 1) {
 					System.out.println(pad + "Found artifactId / groupId pairs online, comparing local jar with random online versions:");
 					for (var entry : checkResultsNoVersion.entrySet()) {
 						System.out.println(pad + "  " + StringUtil.rightPad("PAIR:", matchPadding + 2) + entry.getKey());
 						printUidChecks(entry.getValue(), padding + 4, matchPadding);
 					}
 				}
+				
 			} else {
-				if (notEnoughInfoFoundOffline) {
-					System.out.println(pad + "Did not gather enough information to attempt online search!");
-				} else {
-					System.out.println(pad + "Did not find any matching artifactId / groupId pair online. Attempt to look for valid versions failed!");
-				}
+				System.out.println(pad + "Did not gather enough information to attempt online search!");
 			}
 		}
 		System.out.println();

@@ -1,20 +1,16 @@
 package de.eitco.mavenizer.analyze;
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,13 +19,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.jar.JarEntry;
-import java.util.jar.JarInputStream;
-import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.zip.ZipInputStream;
 
 import org.slf4j.Logger;
@@ -47,20 +39,15 @@ import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
-import de.eitco.mavenizer.analyze.ValueCandidate.ValueSource;
-import de.eitco.mavenizer.analyze.jar.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
-import de.eitco.mavenizer.analyze.jar.JarFilenameAnalyzer;
-import de.eitco.mavenizer.analyze.jar.ManifestAnalyzer;
-import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
-import de.eitco.mavenizer.analyze.jar.PomAnalyzer.FileBuffer;
-import de.eitco.mavenizer.analyze.jar.PomAnalyzer.PomFileType;
 
-/**
- * TODO: Offline analysis should move to separate class.
- */
 public class Analyzer {
 
+	private static final Logger LOG = LoggerFactory.getLogger(Analyzer.class);
+	
+	private static final int VERSION_SEARCH_THRESHOLD = 1;// if no version with higher score is found by offline analysis, random online versions will be tried
+	private static final int PROPOSE_CANDIDATE_THRESHOLD = 1;// minimum score needed for a candidate value to be put into list displayed to user for selection
+	
 	public static class Jar {
 		public final String name;
 		public final String dir;
@@ -70,40 +57,6 @@ public class Analyzer {
 			this.name = name;
 			this.dir = dir;
 			this.sha256 = sha256;
-		}
-	}
-	
-	public static enum FileAnalyzer {
-		MANIFEST("Manifest"),
-		JAR_FILENAME("Jar-Filename"),
-		POM("Pom"),
-		CLASS_FILEPATH("Class-Filepath");
-		
-		public final String displayName;
-		private FileAnalyzer(String displayName) {
-			this.displayName = displayName;
-		}
-	}
-	
-	/**
-	 * Consumer function that is used by FileAnalyzers to return any number of value candidates.
-	 */
-	@FunctionalInterface
-	public static interface ValueCandidateCollector {
-		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
-	}
-	
-	/**
-	 * Helper function that extends ValueCandidateCollector to also provide FileAnalyzer type.
-	 */
-	@FunctionalInterface
-	private static interface AnalyzerCandidateCollector {
-		void addCandidate(FileAnalyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
-		
-		default ValueCandidateCollector withAnalyzer(FileAnalyzer analyzer) {
-			return (component, value, confidenceScore, sourceDetails) -> {
-				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
-			};
 		}
 	}
 	
@@ -125,15 +78,9 @@ public class Analyzer {
 	
 	public static final String COMMAND_NAME = "analyze";
 	
-	private static final Logger LOG = LoggerFactory.getLogger(Analyzer.class);
-	
 	private final AnalysisArgs args = new AnalysisArgs();
-	private final AnalyzerConsolePrinter printer = new AnalyzerConsolePrinter();
-	
-	private final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
-	private final JarFilenameAnalyzer jarNameAnalyzer = new JarFilenameAnalyzer();
-	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
-	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
+	private final JarAnalyzer jarAnalyzer = new JarAnalyzer();
+	private final ConsolePrinter printer = new ConsolePrinter();
 	
 	private MavenRepoChecker repoChecker = null;
 	
@@ -166,29 +113,12 @@ public class Analyzer {
 		
 		cli.println("Offline-Analysis started.", LOG::info);
 		
-		List<Path> jarPaths = new ArrayList<Path>();
-		for (var jarArg : args.jars) {
-			Path fileOrDirAsPath = Paths.get(jarArg);
-			File fileOrDir = fileOrDirAsPath.toFile();
-			if (fileOrDir.isDirectory()) {
-				try (Stream<Path> files = Files.list(fileOrDirAsPath)) {
-					jarPaths.addAll(files
-							.filter(path -> path.toFile().isFile())
-							.filter(path -> path.getFileName().toString().endsWith(".jar"))
-							.collect(Collectors.toList()));
-			    } catch (IOException e) {
-					throw new UncheckedIOException(e);
-				}
-			}
-			if (fileOrDir.isFile()) {
-				jarPaths.add(fileOrDirAsPath);
-			}
-		}
+		List<Path> jarPaths = Util.getFiles(args.jars, path -> path.getFileName().toString().toLowerCase().endsWith(".jar"));
 		var jarCount = jarPaths.size();
 		var jarIndex = 0;
 		List<JarAnalysisWaitingForCompletion> waiting = new ArrayList<>(jarCount);
 		
-		// first we do offline analysis an start online analysis for all jars
+		// first we do offline analysis and start online analysis for all jars
 	    for (var jarPath : jarPaths) {
 	    	
 	    	if (args.limit >= 0 && jarIndex >= args.limit) {
@@ -211,86 +141,25 @@ public class Analyzer {
 		    	String absoluteDir = jarPath.toAbsolutePath().normalize().getParent().toString();
 		    	Jar jar = new Jar(jarName, absoluteDir, jarHash);
 				
-				List<FileBuffer> pomFiles = new ArrayList<>(2);
-				List<Path> classFilepaths = new ArrayList<>();
-				
-				var manifest = readJarStream(compressedIn, (entry, in) -> {
-					
-					var manualManifest = Optional.<Manifest>empty();
-					var entryPath = Paths.get(entry.getName());
-					var filename = entryPath.getFileName().toString();
-					
-					if (!entry.isDirectory()) {
-						if (filename.equals(PomFileType.POM_XML.filename) || filename.equals(PomFileType.POM_PROPS.filename)) {
-							try {
-								var bytes = in.readAllBytes();
-								pomFiles.add(new FileBuffer(entryPath, bytes));
-							} catch (IOException e) {
-								throw new UncheckedIOException(e);
-							}
-						}
-						if (filename.endsWith(".class")) {
-							classFilepaths.add(entryPath);
-						}
-						if (Paths.get("META-INF/MANIFEST.MF").equals(entryPath)) {
-							// Usually the JarInputStream should parse the manifest and provide it separately from other files.
-							// However, apparently it can fail to find or parse the file, in which case we need to parse it manually.
-							LOG.debug("Failed to auto-parse manifest: " + jarName);
-							try {
-								manualManifest = Optional.of(new Manifest(in));
-							} catch (IOException e) {
-								throw new UncheckedIOException(e);
-							}
-						}
-					}
-					
-					return manualManifest;
-				});
-				
-				var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
-						MavenUidComponent.GROUP_ID, new HashMap<>(),
-						MavenUidComponent.ARTIFACT_ID, new HashMap<>(),
-						MavenUidComponent.VERSION, new HashMap<>()
-						);
-				
-				AnalyzerCandidateCollector collector = (FileAnalyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
-					Map<String, ValueCandidate> candidates = collected.get(component);
-					
-					var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
-					var source = new ValueSource(analyzer, confidenceScore, sourceDetails);
-					candidate.addSource(source);
-				};
-				
-				classAnalyzer.analyze(collector.withAnalyzer(classAnalyzer.getType()), classFilepaths);
-				pomAnalyzer.analyze(collector.withAnalyzer(pomAnalyzer.getType()), pomFiles);
-				manifestAnalyzer.analyze(collector.withAnalyzer(manifestAnalyzer.getType()), manifest);
-				jarNameAnalyzer.analyze(collector.withAnalyzer(jarNameAnalyzer.getType()), jarName);
-				
-				var sorted = Map.<MavenUidComponent, List<ValueCandidate>>of(
-						MavenUidComponent.GROUP_ID, new ArrayList<>(),
-						MavenUidComponent.ARTIFACT_ID, new ArrayList<>(),
-						MavenUidComponent.VERSION, new ArrayList<>()
-						);
-				
-				var newScoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoreSum).reversed();
-				var sourceComparator = Comparator.comparing((ValueSource source) -> source.score).reversed();
-				
-				for (var uidComponent : MavenUidComponent.values()) {
-					var currentCollected = collected.get(uidComponent);
-					var currentSorted = sorted.get(uidComponent);
-					
-					for (var candidate : currentCollected.values()) {
-						currentSorted.add(candidate);
-						candidate.sortSources(sourceComparator);
-					}
-					currentSorted.sort(newScoreComparator);
-				}
+				var sorted = jarAnalyzer.analyzeOffline(jar, compressedIn);
 				
 				if (!args.offline) {
 					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
 					
-					var toCheckWithVersion = toCheck.stream().filter(uid -> uid.version != null).collect(Collectors.toSet());
-					var toCheckNoVersion = toCheck.stream().filter(uid -> uid.version == null).collect(Collectors.toSet());
+					var toCheckWithVersion = toCheck.entrySet().stream()
+							.filter(entry -> entry.getKey().version != null)
+							.map(Map.Entry::getKey)
+							.collect(Collectors.toSet());
+					
+					var toCheckNoVersion = toCheck.entrySet().stream()
+							.filter(entry -> {
+								return entry.getKey().version == null
+										|| entry.getValue().get(MavenUidComponent.VERSION) <= VERSION_SEARCH_THRESHOLD;// check if score too low
+							})
+							.map(Map.Entry::getKey)
+							.map(uid -> new MavenUid(uid.groupId, uid.artifactId, null))// null out version
+							.collect(Collectors.toSet());
+					
 					var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
 					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
 					
@@ -409,7 +278,6 @@ public class Analyzer {
 	private Optional<MavenUid> userSelectCandidate(Cli cli, JarAnalysisWaitingForCompletion jarAnalysis) {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
-		int proposalScoreThreshold = 2;
 		var pad = "  ";
 		
 		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {
@@ -431,7 +299,7 @@ public class Analyzer {
 			// collect all proposals
 			var proposals = new LinkedHashSet<String>();
 			for (var candidate : jarAnalysis.offlineResult.get(component)) {
-				if (candidate.scoreSum >= proposalScoreThreshold) {
+				if (candidate.scoreSum >= PROPOSE_CANDIDATE_THRESHOLD) {
 					proposals.add(candidate.value);
 				}
 			}
@@ -509,22 +377,5 @@ public class Analyzer {
 		cli.askUserToContinue(pad);
 		
 		return result;
-	}
-	
-	public static Optional<Manifest> readJarStream(InputStream in, BiFunction<JarEntry, InputStream, Optional<Manifest>> fileConsumer) {
-	    try (var jarIn = new JarInputStream(in, false)) {
-	    	var manifest = Optional.ofNullable(jarIn.getManifest());
-		    JarEntry entry;
-			while ((entry = jarIn.getNextJarEntry()) != null) {
-				var manualManifest = fileConsumer.apply(entry, jarIn);
-				if (manifest.isEmpty() && manualManifest.isPresent()) {
-					manifest = manualManifest;
-				}
-				jarIn.closeEntry();
-			}
-			return manifest;
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
 	}
 }

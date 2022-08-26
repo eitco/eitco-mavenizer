@@ -3,7 +3,6 @@ package de.eitco.mavenizer.analyze.jar;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,36 +10,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
-import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
-import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
+import de.eitco.mavenizer.analyze.JarAnalyzer.FileBuffer;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
+import de.eitco.mavenizer.analyze.JarAnalyzer.PomFileType;
+import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class PomAnalyzer {
-	
-	public static class FileBuffer {
-		public final Path path;
-		public final byte[] content;
-		
-		public FileBuffer(Path path, byte[] content) {
-			this.path = path;
-			this.content = content;
-		}
-	}
-	
-	public static enum PomFileType {
-		POM_XML("pom.xml"),
-		POM_PROPS("pom.properties");
-		
-		public final String filename;
-		private PomFileType(String filename) {
-			this.filename = filename;
-		}
-	}
 
 	public void analyze(ValueCandidateCollector result, List<FileBuffer> pomFiles) {
 		
@@ -61,7 +44,9 @@ public class PomAnalyzer {
 				if (isExpectedResults) {
 					// 1 result, high confidence
 					var confidence = 10;
-					var source = "pom.xml / pom.properties";
+					var source = Stream.of(PomFileType.values())
+							.map(type -> type.filename)
+							.collect(Collectors.joining(" / "));
 					result.addCandidate(uidComponent, value, confidence, source);
 					break;
 				} else {
@@ -163,7 +148,7 @@ public class PomAnalyzer {
 		return foundValues;
 	}
 	
-	public FileAnalyzer getType() {
-		return FileAnalyzer.POM;
+	public JarAnalyzerType getType() {
+		return JarAnalyzerType.POM;
 	}
 }

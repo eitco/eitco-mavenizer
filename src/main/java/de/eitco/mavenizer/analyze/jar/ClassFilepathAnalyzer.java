@@ -12,8 +12,9 @@ import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
-import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
-import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarEntry;
+import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class ClassFilepathAnalyzer {
 	
@@ -87,13 +88,13 @@ public class ClassFilepathAnalyzer {
 		}
 	}
 	
-	public void analyze(ValueCandidateCollector result, List<Path> paths) {
+	public void analyze(ValueCandidateCollector result, List<JarEntry> classes) {
 		
 		// convert paths into tree structure to make it possible to walk the tree to gather folder statistics
 		FolderNode folderTree = new FolderNode(CURRENT_DIR);
-		for (var path : paths) {
-			var parent = path.getParent();
-			var versioned = path.startsWith(Paths.get("META-INF/versions"));
+		for (var clazz : classes) {
+			var parent = clazz.path.getParent();
+			var versioned = clazz.path.startsWith(Paths.get("META-INF/versions"));
 			
 			if (parent != null && !versioned) {
 				folderTree.incrementClassCount(parent, parent);
@@ -136,7 +137,7 @@ public class ClassFilepathAnalyzer {
 		}
 	}
 	
-	public FileAnalyzer getType() {
-		return FileAnalyzer.CLASS_FILEPATH;
+	public JarAnalyzerType getType() {
+		return JarAnalyzerType.CLASS_FILEPATH;
 	}
 }

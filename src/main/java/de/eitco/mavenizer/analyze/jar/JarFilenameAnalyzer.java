@@ -3,8 +3,8 @@ package de.eitco.mavenizer.analyze.jar;
 import java.util.regex.Matcher;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
-import de.eitco.mavenizer.analyze.Analyzer.FileAnalyzer;
-import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
+import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
+import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class JarFilenameAnalyzer {
 	
@@ -31,7 +31,7 @@ public class JarFilenameAnalyzer {
 		result.addCandidate(MavenUidComponent.ARTIFACT_ID, nameWithoutExt, 4, valueSource);
 	}
 	
-	public FileAnalyzer getType() {
-		return FileAnalyzer.JAR_FILENAME;
+	public JarAnalyzerType getType() {
+		return JarAnalyzerType.JAR_FILENAME;
 	}
 }
