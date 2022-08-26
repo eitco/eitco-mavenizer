@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -175,14 +176,20 @@ public class Analyzer {
 			return errors;
 		});
 		
+		LOG.info("Analyzer started with args: " + Arrays.toString(cli.getLastArgs()));
+		
+		if (args.interactive) {
+			cli.println("Interactive mode enabled.", LOG::info);
+		}
+		
 		if (!args.offline) {
 			repoChecker = new MavenRepoChecker();
 		} else {
-			System.out.println("ONLINE ANALYSIS DISABLED! - Analyzer will not be able to auto-select values for matching jars found online!");
+			cli.println("ONLINE ANALYSIS DISABLED! - Analyzer will not be able to auto-select values for matching jars found online!", LOG::info);
 			cli.askUserToContinue("");
 		}
 		
-		System.out.println("Offline-Analysis started.");
+		cli.println("Offline-Analysis started.", LOG::info);
 		
 		List<Path> jarPaths = new ArrayList<Path>();
 		for (var jarArg : args.jars) {
@@ -355,14 +362,14 @@ public class Analyzer {
 	    
 	    int total = waiting.size();
 	    int skipped = total - jarReports.size();
-	    System.out.println("Analysis complete (" + skipped + "/" + total + " excluded from report).");
+	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
 	    
 	    if (jarReports.size() >= 1) {
 	    	// write report
 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
-			System.out.println("Writing report file: " + reportFile.toAbsolutePath());
-			LOG.info("Writing report file: " + reportFile.toAbsolutePath());
+			
+			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
 		    
 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
 		    var report = new AnalysisReport(generalInfo, jarReports);
@@ -374,12 +381,11 @@ public class Analyzer {
 				throw new UncheckedIOException(e);
 			}
 	    } else {
-	    	System.out.println("Skipping report file because no jars were resolved.");
-	    	LOG.info("Skipping report file because no jars were resolved.");
+	    	cli.println("Skipping report file because no jars were resolved.", LOG::info);
 	    }
 		
     	if (!args.offline) {
-    		System.out.println("Online-Check cleanup started.");
+    		cli.println("Online-Check cleanup started.", LOG::info);
     		repoChecker.shutdown();
     	}
 	}

@@ -22,7 +22,7 @@ public class AnalysisArgs implements ResettableCommand {
 	
 	@Parameter(order = 15, names = { "-interactive", "-i" }, description = 
 			"Enable interactive mode to complete missing maven UID information for jars from unknown origin."
-			+ "If disabled, only jars are added to final report that could be found in a maven remote repository.")
+			+ " If disabled, only jars are added to final report that could be found in a maven remote repository.")
 	public boolean interactive;
 	
 	@Parameter(order = 20, names = "-reportFile", description = "Only if -interactive is enabled: File path and name were result report should be created.")

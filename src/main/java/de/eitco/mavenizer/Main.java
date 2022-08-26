@@ -2,10 +2,15 @@ package de.eitco.mavenizer;
 
 import java.io.IOException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.eitco.mavenizer.analyze.Analyzer;
 
 public class Main {
 
+	private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+	
 	public static void main(String[] args) throws IOException {
 		new Main(args);
 	}
@@ -26,5 +31,7 @@ public class Main {
 		if (Generator.COMMAND_NAME.equals(command)) {
 			generator.runGenerator(cli);
 		}
+		
+		cli.println("Exiting.", LOG::info);
 	}
 }

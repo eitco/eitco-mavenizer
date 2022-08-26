@@ -1,10 +1,12 @@
 package de.eitco.mavenizer;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -36,6 +38,7 @@ public class Cli {
 	public Scanner scanner;
 	
 	private JCommander commander;
+	private String[] lastArgs;
 	private DefaultArgs defaultArgs;
 	private Map<String, ResettableCommand> commands;
 	
@@ -43,6 +46,7 @@ public class Cli {
 		this.defaultArgs = new DefaultArgs();
 		this.commands = new HashMap<>();
 		this.commander = buildCli();
+		this.lastArgs = null;
 		this.scanner = new Scanner(System.in);
 	}
 	
@@ -62,13 +66,18 @@ public class Cli {
 		commander.addCommand(name, command);
 	}
 	
-	public void parseArgs(String[] args) {
+	private void parseArgs(String[] args) {
+		lastArgs = args;
 		// commands need to be reset before parsing, otherwise previous values are interpreted as default values
 		defaultArgs.setDefaults();
 		for (var command : commands.values()) {
 			command.setDefaults();
 		}
 		commander.parse(args);
+	}
+	
+	public String[] getLastArgs() {
+		return Arrays.copyOf(lastArgs, lastArgs.length);
 	}
 	
 	public void printUsage() {
@@ -140,5 +149,10 @@ public class Cli {
 	public void askUserToContinue(String pad) {
 		System.out.println(pad + "Press Enter to continue...");
 		scanner.nextLine();
+	}
+	
+	public void println(String msg, Consumer<String> logFunction) {
+		logFunction.accept(msg);
+		System.out.println(msg);
 	}
 }

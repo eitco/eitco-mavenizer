@@ -13,14 +13,13 @@
 		<!-- set immediateFlush to false for much higher logging throughput -->
 		<immediateFlush>true</immediateFlush>
 		<encoder>
-			<pattern>%-4relative [%thread] %-5level %logger{35} - %msg%n</pattern>
+			<pattern>%d [%thread] %-5level %logger{35} - %msg%n</pattern>
 		</encoder>
 	</appender>
     
     
     <root level="DEBUG">
     	<appender-ref ref="FILE"/>
-<!--         <appender-ref ref="CONSOLE"/> -->
     </root>
     <logger name="org.eclipse.aether" level="warn" />
     <logger name="org.apache.http" level="warn" />

@@ -16,6 +16,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -113,6 +116,8 @@ public class Generator {
 	
 	public static final String COMMAND_NAME = "generate";
 	
+	private static final Logger LOG = LoggerFactory.getLogger(Generator.class);
+	
 	private final GeneratorArgs args = new GeneratorArgs();
 	
 	public void addCommand(Cli cli) {
@@ -131,6 +136,8 @@ public class Generator {
 			return errors;
 		});
 		
+		LOG.info("Generator started with args: " + Arrays.toString(cli.getLastArgs()));
+		
 		ObjectMapper mapper = new ObjectMapper();
 		var analysisReports = new ArrayList<AnalysisReport>();
 		try {
@@ -141,6 +148,15 @@ public class Generator {
 			throw new UncheckedIOException(e);
 		}
 		
+		var jarReports = analysisReports.stream()
+				.flatMap(report -> report.jarResults.stream())
+				.collect(Collectors.toList());
+		
+		if (jarReports.isEmpty()) {
+			cli.println("No jar entries found in given report files!", LOG::info);
+			return;
+		}
+		
 		if (!args.noScript) {
 			for (var scriptType : args.scriptTypes) {
 				var type = ScriptType.fileExtensions.get(scriptType);
@@ -148,25 +164,56 @@ public class Generator {
 				String fileContent = "";
 				if (type.equals(ScriptType.POWERSHELL)) {
 					
-					for (var report : analysisReports) {
-						for (var jar : report.jarResults) {
-							var jarPath = Paths.get(jar.dir).resolve(jar.filename);
-							var uid = jar.result;
-							var repositoryId = "";
-							var repositoryUrl = "";
-							fileContent += ".\\mvn deploy:deploy-file -Dfile='" + jarPath + "' -DgroupId='" + uid.groupId + "' -DartifactId='" + uid.artifactId
-									+ "' -Dpackaging='jar' -Dversion='1.0' -DgeneratePom='true' -DrepositoryId='" + repositoryId + "' -Durl='" + repositoryUrl + "'"
-									+ "\n";
-						}
+					for (var jar : jarReports) {
+						var jarPath = Paths.get(jar.dir).resolve(jar.filename);
+						var uid = jar.result;
+						var repositoryId = "";
+						var repositoryUrl = "";
+						fileContent += ".\\mvn deploy:deploy-file -Dfile='" + jarPath + "' -DgroupId='" + uid.groupId + "' -DartifactId='" + uid.artifactId
+								+ "' -Dpackaging='jar' -Dversion='1.0' -DgeneratePom='true' -DrepositoryId='" + repositoryId + "' -Durl='" + repositoryUrl + "'"
+								+ "\n";
 					}
 				}
 				
 				var path = Paths.get(args.scriptFile + "." + type.fileExtension);
+				cli.println("Generating install script: " + path.toAbsolutePath(), LOG::info);
 				try {
 					Files.writeString(path, fileContent);
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
 				}
+			}
+		}
+		
+		if (args.pom) {
+			String fileContent = "";
+			fileContent += "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"" + "\n";
+			fileContent += "	xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" + "\n";
+			fileContent += "	xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">" + "\n";
+			fileContent += "	<modelVersion>4.0.0</modelVersion>" + "\n";
+			fileContent += "	<groupId>???</groupId>" + "\n";
+			fileContent += "	<artifactId>???</artifactId>" + "\n";
+			fileContent += "	<version>0.0.1-SNAPSHOT</version>" + "\n";
+			fileContent += "" + "\n";
+			fileContent += "	<dependencies>" + "\n";
+			
+			for (var jar : jarReports) {
+				fileContent += "		<dependency>" + "\n";
+				fileContent += "			<groupId>" + jar.result.groupId + "</groupId>" + "\n";
+				fileContent += "			<artifactId>" + jar.result.artifactId + "</artifactId>" + "\n";
+				fileContent += "			<version>" + jar.result.version + "</version>" + "\n";
+				fileContent += "		</dependency>" + "\n";
+			}
+			
+			fileContent += "	</dependencies>" + "\n";
+			fileContent += "</project>" + "\n";
+			
+			var path = Paths.get(args.pomFile);
+			cli.println("Generating POM: " + path.toAbsolutePath(), LOG::info);
+			try {
+				Files.writeString(path, fileContent);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
 			}
 		}
 	}
