@@ -408,7 +408,7 @@ public class Analyzer {
 	private Optional<MavenUid> userSelectCandidate(Cli cli, JarAnalysisWaitingForCompletion jarAnalysis) {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
-		int proposalScoreThreshold = 4;
+		int proposalScoreThreshold = 2;
 		var pad = "  ";
 		
 		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {

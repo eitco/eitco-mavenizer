@@ -67,13 +67,11 @@ public class ClassFilepathAnalyzer {
 		}
 		
 		public int getStats(List<FolderStats> stats) {
-			int absoluteCount;
-			if (children == null) {
-				absoluteCount = classCount;
-			} else {
-				absoluteCount = children.values().stream()
-					.mapToInt(node -> node.getStats(stats))
-					.sum();
+			int absoluteCount = classCount;
+			if (children != null) {
+				absoluteCount = absoluteCount + children.values().stream()
+						.mapToInt(node -> node.getStats(stats))
+						.sum();
 			}
 			stats.add(new FolderStats(path, absoluteCount));
 			return absoluteCount;
