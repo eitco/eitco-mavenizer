@@ -53,7 +53,6 @@ import org.slf4j.LoggerFactory;
 import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
-import de.eitco.mavenizer.analyze.Analyzer.ValueCandidate;
 
 public class MavenRepoChecker {
 

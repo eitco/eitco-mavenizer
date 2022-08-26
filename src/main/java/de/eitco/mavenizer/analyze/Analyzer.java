@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -49,6 +48,7 @@ import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.analyze.ValueCandidate.ValueSource;
 import de.eitco.mavenizer.analyze.jar.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
 import de.eitco.mavenizer.analyze.jar.JarFilenameAnalyzer;
@@ -57,6 +57,9 @@ import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
 import de.eitco.mavenizer.analyze.jar.PomAnalyzer.FileBuffer;
 import de.eitco.mavenizer.analyze.jar.PomAnalyzer.PomFileType;
 
+/**
+ * TODO: Offline analysis should move to separate class.
+ */
 public class Analyzer {
 
 	public static class Jar {
@@ -75,8 +78,7 @@ public class Analyzer {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
-		CLASS_FILEPATH("Class-Filepath"),
-		MAVEN_REPO_CHECK("Repo-Check");
+		CLASS_FILEPATH("Class-Filepath");
 		
 		public final String displayName;
 		private FileAnalyzer(String displayName) {
@@ -84,8 +86,19 @@ public class Analyzer {
 		}
 	}
 	
+	/**
+	 * Consumer function that is used by FileAnalyzers to return any number of value candidates.
+	 */
 	@FunctionalInterface
-	public static interface AnalyzerCandidateCollector {
+	public static interface ValueCandidateCollector {
+		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
+	}
+	
+	/**
+	 * Helper function that extends ValueCandidateCollector to also provide FileAnalyzer type.
+	 */
+	@FunctionalInterface
+	private static interface AnalyzerCandidateCollector {
 		void addCandidate(FileAnalyzer analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
 		
 		default ValueCandidateCollector withAnalyzer(FileAnalyzer analyzer) {
@@ -93,11 +106,6 @@ public class Analyzer {
 				this.addCandidate(analyzer, component, value, confidenceScore, sourceDetails);
 			};
 		}
-	}
-	
-	@FunctionalInterface
-	public static interface ValueCandidateCollector {
-		void addCandidate(MavenUidComponent component, String value, int confidenceScore, String sourceDetails);
 	}
 	
 	public static class JarAnalysisWaitingForCompletion {
@@ -113,38 +121,6 @@ public class Analyzer {
 			this.offlineResult = offlineResult;
 			this.onlineCompletionWithVersion = onlineCompletionWithVersion;
 			this.onlineCompletionNoVersion = onlineCompletionNoVersion;
-		}
-	}
-	
-	public static class ValueCandidate {
-		public final String value;
-		public final List<ValueSource> sources;
-		public int scoreSum = 0;
-		
-		private final List<ValueSource> sourcesInternal = new ArrayList<>();
-		
-		public ValueCandidate(String value) {
-			this.value = value;
-			this.sources = Collections.unmodifiableList(sourcesInternal);
-		}
-		public void addSource(ValueSource source) {
-			sourcesInternal.add(source);
-			scoreSum += source.score;
-		}
-		public void sortSources(Comparator<? super ValueSource> comparator) {
-			sourcesInternal.sort(comparator);
-		}
-	}
-	
-	public static class ValueSource {
-		public final FileAnalyzer analyzer;
-		public final int score;
-		public final String details;
-		
-		public ValueSource(FileAnalyzer analyzer, int score, String details) {
-			this.analyzer = analyzer;
-			this.score = score;
-			this.details = details;
 		}
 	}
 	
@@ -319,7 +295,7 @@ public class Analyzer {
 			}
 	    };
 	    
-		System.out.println();// end System.out.print
+		System.out.println();// end System.out.print with StringUtil.RETURN_LINE
 		
 	    var onlineCheckInitialized = false;
 	    System.out.println("Online-Check initializing...");
@@ -535,16 +511,4 @@ public class Analyzer {
 			throw new UncheckedIOException(e);
 		}
 	}
-	
-//	public static void readZipStream(InputStream in, BiConsumer<ZipEntry, InputStream> fileConsumer) {
-//	    try (ZipInputStream zipIn = new ZipInputStream(in)) {
-//		    ZipEntry entry;
-//			while ((entry = zipIn.getNextEntry()) != null) {
-//				fileConsumer.accept(entry, zipIn);
-//			    zipIn.closeEntry();
-//			}
-//		} catch (IOException e) {
-//			throw new UncheckedIOException(e);
-//		}
-//	}
 }
