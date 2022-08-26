@@ -17,6 +17,7 @@ import de.eitco.mavenizer.analyze.Analyzer.ValueCandidateCollector;
 
 public class ManifestAnalyzer {
 	
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public void analyze(ValueCandidateCollector result, Optional<Manifest> manifestOptional) {
 		
 		if (!manifestOptional.isPresent()) {
@@ -24,12 +25,20 @@ public class ManifestAnalyzer {
 		}
 		var manifest = manifestOptional.get();
 		
-		for (var entry : manifest.getMainAttributes().entrySet()) {
-			String attrName = ((Attributes.Name) entry.getKey()).toString();
+		analyze(result, (Set) manifest.getMainAttributes().entrySet());
+		for (var subPathAttributes : manifest.getEntries().values()) {
+			// Manifest can specify attributes that only apply to classes in certain sub-packages.
+			analyze(result, (Set) subPathAttributes.entrySet());
+		}
+	}
+	
+	private void analyze(ValueCandidateCollector result, Set<Map.Entry<Attributes.Name, String>> attributes) {
+		for (var entry : attributes) {
+			String attrName = entry.getKey().toString();
 			
 			if (attrName.endsWith(VERSION_ATTRIBUTE_SUFFIX) && !VERSION_ATTRIBUTE_EXCLUDES.contains(attrName)) {
 				var uidComponent = MavenUidComponent.VERSION;
-				var attrValue = ((String) entry.getValue()).trim();
+				var attrValue = entry.getValue().trim();
 				
 				Matcher matcher = Helper.Regex.attributeVersion.matcher(attrValue);
 				if (matcher.find()) {
@@ -46,11 +55,10 @@ public class ManifestAnalyzer {
 			} else if (Attribute.stringValues.contains(attrName)) {
 				
 				var attr = Attribute.fromString(attrName);
-				var attrValue = ((String) entry.getValue()).trim();
+				var attrValue = entry.getValue().trim();
 				var attrSource = attr.toString() + ": '" + attrValue + "'";
 				
 				for (var uidComponent : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID)) {
-//					var resultList = result.get(uidComponent);
 					Map<Attribute, CandidatesExtractor> extractors = null;
 					
 					switch (uidComponent) {

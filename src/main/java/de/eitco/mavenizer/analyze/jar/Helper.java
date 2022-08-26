@@ -20,7 +20,8 @@ public class Helper {
 		// reusable patterns
 		public final static String PATTERN_CLASS = "[A-Z]\\w*";
 		public final static String PATTERN_SUBPACKAGE = "[a-z_][a-z0-9_]*";
-		public final static String PATTERN_ARTIFACT_ID = "[a-z_][a-z0-9_\\-]*";
+		public final static String PATTERN_ARTIFACT_ID_STRICT = "[a-z_][a-z0-9_\\-]*";
+		public final static String PATTERN_ARTIFACT_ID_LIKE = "[a-zA-Z_][a-zA-Z0-9_\\-]*";
 		public final static String PATTERN_PACKAGE = "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_SUBPACKAGE + ")";
 		public final static String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
 		public final static String PATTERN_CLASSIFIER = "(([0-9]+)|([a-zA-Z]+))";
@@ -35,11 +36,14 @@ public class Helper {
 		public final static String PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS =
 				"^(?<" + CAP_GROUP_PACKAGE + ">" + PATTERN_PACKAGE_2_OR_MORE + ")(\\.(?<" + CAP_GROUP_CLASS + ">" + PATTERN_CLASS + "))?$";
 		
-		public final static String ARTIFACT_ID =
-				"^(?<" + CAP_GROUP_ARTIFACT_ID + ">" + PATTERN_ARTIFACT_ID + ")$";
+		public final static String ARTIFACT_ID_LIKE =
+				"^(?<" + CAP_GROUP_ARTIFACT_ID + ">" + PATTERN_ARTIFACT_ID_LIKE + ")$";
+		
+		public final static String ARTIFACT_ID_STRICT =
+				"^(?<" + CAP_GROUP_ARTIFACT_ID + ">" + PATTERN_ARTIFACT_ID_STRICT + ")$";
 		
 		public final static String OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_AS_LEAF =
-				"^(?<" + CAP_GROUP_PACKAGE + ">" + "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_ARTIFACT_ID + ")" + ")$";
+				"^(?<" + CAP_GROUP_PACKAGE + ">" + "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_ARTIFACT_ID_STRICT + ")" + ")$";
 		
 		public final static String JAR_FILENAME_VERSION_SUFFIX =
 				"\\-(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
@@ -56,17 +60,18 @@ public class Helper {
 		// precompiled
 		public final static Pattern packageWithOptionalClass = Pattern.compile(PACKAGE_WITH_OPTIONAL_CLASS);
 		public final static Pattern packageStrictWithOptionalClass = Pattern.compile(PACKAGE_2_OR_MORE_WITH_OPTIONAL_CLASS);
-		public final static Pattern artifactId = Pattern.compile(ARTIFACT_ID);
+		public final static Pattern artifactId = Pattern.compile(ARTIFACT_ID_STRICT);
+		public final static Pattern artifactIdLike = Pattern.compile(ARTIFACT_ID_LIKE);
 		public final static Pattern optionalPackageWithArtifactIdAsLeaf = Pattern.compile(OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_AS_LEAF);
 		public final static Pattern jarFilenameVersionSuffix = Pattern.compile(JAR_FILENAME_VERSION_SUFFIX);
 		public final static Pattern attributeVersion = Pattern.compile(ATTRIBUTE_VERSION);
 		public final static Pattern groupId = Pattern.compile(GROUP_ID);
 		public final static Pattern version = Pattern.compile(VERSION);
 		
-		public static Pattern getPattern(MavenUidComponent component) {
+		public static Pattern getPatternForUserInputValidation(MavenUidComponent component) {
 			switch(component) {
 			case GROUP_ID: return Regex.groupId;
-			case ARTIFACT_ID: return Regex.artifactId;
+			case ARTIFACT_ID: return Regex.artifactIdLike;// allow uppercase letters
 			case VERSION: return Regex.version;
 			}
 			throw new IllegalStateException();

@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.function.Consumer;
@@ -35,8 +36,7 @@ public class Cli {
 		}
 	}
 	
-	public Scanner scanner;
-	
+	private Scanner scanner;
 	private JCommander commander;
 	private String[] lastArgs;
 	private DefaultArgs defaultArgs;
@@ -84,8 +84,16 @@ public class Cli {
 		commander.usage();
 	}
 	
+	public String nextLine() {
+		try {
+			return scanner.nextLine();
+		} catch (NoSuchElementException e) {
+			return null;
+		}
+	}
+	
 	public String[] scanArgsBlocking() {
-		var argsString = scanner.nextLine();
+		var argsString = nextLine();
 		return ArgumentTokenizer.tokenize(argsString).toArray(new String[0]);
 	}
 	

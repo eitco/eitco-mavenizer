@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.jar.JarEntry;
@@ -216,6 +215,7 @@ public class Analyzer {
 				
 				var manifest = readJarStream(compressedIn, (entry, in) -> {
 					
+					var manualManifest = Optional.<Manifest>empty();
 					var entryPath = Paths.get(entry.getName());
 					var filename = entryPath.getFileName().toString();
 					
@@ -231,7 +231,19 @@ public class Analyzer {
 						if (filename.endsWith(".class")) {
 							classFilepaths.add(entryPath);
 						}
+						if (Paths.get("META-INF/MANIFEST.MF").equals(entryPath)) {
+							// Usually the JarInputStream should parse the manifest and provide it separately from other files.
+							// However, apparently it can fail to find or parse the file, in which case we need to parse it manually.
+							LOG.debug("Failed to auto-parse manifest: " + jarName);
+							try {
+								manualManifest = Optional.of(new Manifest(in));
+							} catch (IOException e) {
+								throw new UncheckedIOException(e);
+							}
+						}
 					}
+					
+					return manualManifest;
 				});
 				
 				var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
@@ -449,7 +461,7 @@ public class Analyzer {
 			boolean hasCorrectInput = false;
 			String selected;
 			do {
-				String inputString = cli.scanner.nextLine().trim();
+				String inputString = cli.nextLine().trim();
 				try {
 					if (inputString.endsWith("!")) {
 						var selectedIndex = Integer.parseInt(inputString.substring(0, inputString.length() - 1));
@@ -466,7 +478,7 @@ public class Analyzer {
 				} catch(NumberFormatException e) {
 					selected = inputString;
 				}
-				Pattern pattern = Regex.getPattern(component);
+				Pattern pattern = Regex.getPatternForUserInputValidation(component);
 				Matcher matcher = pattern.matcher(selected);
 				if (matcher.find()) {
 					hasCorrectInput = true;
@@ -498,12 +510,15 @@ public class Analyzer {
 		return result;
 	}
 	
-	public static Optional<Manifest> readJarStream(InputStream in, BiConsumer<JarEntry, InputStream> fileConsumer) {
+	public static Optional<Manifest> readJarStream(InputStream in, BiFunction<JarEntry, InputStream, Optional<Manifest>> fileConsumer) {
 	    try (var jarIn = new JarInputStream(in, false)) {
 	    	var manifest = Optional.ofNullable(jarIn.getManifest());
 		    JarEntry entry;
 			while ((entry = jarIn.getNextJarEntry()) != null) {
-				fileConsumer.accept(entry, jarIn);
+				var manualManifest = fileConsumer.apply(entry, jarIn);
+				if (manifest.isEmpty() && manualManifest.isPresent()) {
+					manifest = manualManifest;
+				}
 				jarIn.closeEntry();
 			}
 			return manifest;
