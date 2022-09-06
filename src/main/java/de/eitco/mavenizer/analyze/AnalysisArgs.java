@@ -37,6 +37,9 @@ public class AnalysisArgs implements ResettableCommand {
 	@Parameter(order = 50, names = "-limit", description = "If set to a positive number, only that many jars will be analyzed.")
 	public int limit;
 	
+	@Parameter(order = 60, names = "-start", description = "If set to a positive number, jars are skipped until jar with given number is reached.")
+	public int start;
+	
 	public AnalysisArgs() {
 		setDefaults();
 	}
@@ -49,6 +52,7 @@ public class AnalysisArgs implements ResettableCommand {
 		forceDetailedOutput = false;
 		offline = false;
 		limit = -1;
+		start = 1;
 	}
 	
 	public Optional<String> validateJars() {
@@ -71,6 +75,13 @@ public class AnalysisArgs implements ResettableCommand {
 			var corrected = reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, "");
 			// since filename arg might not contain datetime pattern, we need to check for existing files as well as parent dir
 			return Util.validateFileCanBeCreated(corrected);
+		}
+		return Optional.empty();
+	}
+	
+	public Optional<String> validateStartNumber() {
+		if (start <= 0) {
+			return Optional.of("Start parameter must be at least '1'.");
 		}
 		return Optional.empty();
 	}

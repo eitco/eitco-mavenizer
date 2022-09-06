@@ -115,7 +115,8 @@ public class Analyzer {
 		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
 			var errors = List.of(
 					args.validateJars(),
-					args.validateReportFile()
+					args.validateReportFile(),
+					args.validateStartNumber()
 				);
 			return errors;
 		});
@@ -143,7 +144,12 @@ public class Analyzer {
 		// first we do offline analysis and start online analysis for all jars
 	    for (var jarPath : jarPaths) {
 	    	
-	    	if (args.limit >= 0 && jarIndex >= args.limit) {
+	    	if ((args.start - 1) > jarIndex) {
+	    		jarIndex++;
+	    		continue;
+	    	}
+	    	
+	    	if (args.limit >= 0 && jarIndex >= (args.start - 1 + args.limit)) {
 	    		break;
 	    	}
 	    	
