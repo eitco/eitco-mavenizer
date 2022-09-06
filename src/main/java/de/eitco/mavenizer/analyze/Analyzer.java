@@ -37,6 +37,7 @@ import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
+import de.eitco.mavenizer.analyze.JarAnalyzer.ManifestFile;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
@@ -60,19 +61,39 @@ public class Analyzer {
 		}
 	}
 	
+	public static class JarAnalysisResult {
+		public final Optional<ManifestFile> manifestFile;
+		public final Map<MavenUidComponent, List<ValueCandidate>> sortedValueCandidates;
+		
+		public JarAnalysisResult(Optional<ManifestFile> manifestFile, Map<MavenUidComponent, List<ValueCandidate>> sortedValueCandidates) {
+			this.manifestFile = manifestFile;
+			this.sortedValueCandidates = sortedValueCandidates;
+		}
+	}
+	
 	public static class JarAnalysisWaitingForCompletion {
 		public final Jar jar;
-		public final Map<MavenUidComponent, List<ValueCandidate>> offlineResult;
+		public final JarAnalysisResult offlineResult;
 		public final CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion;
 		public final CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion;
 		
-		public JarAnalysisWaitingForCompletion(Jar jar, Map<MavenUidComponent, List<ValueCandidate>> offlineResult,
+		public JarAnalysisWaitingForCompletion(Jar jar, JarAnalysisResult offlineResult,
 				CompletableFuture<Set<UidCheck>> onlineCompletionWithVersion,
 				CompletableFuture<Map<MavenUid, Set<UidCheck>>> onlineCompletionNoVersion) {
 			this.jar = jar;
 			this.offlineResult = offlineResult;
 			this.onlineCompletionWithVersion = onlineCompletionWithVersion;
 			this.onlineCompletionNoVersion = onlineCompletionNoVersion;
+		}
+	}
+	
+	public static class UserSelectionResult {
+		Optional<MavenUid> selected;
+		boolean wantsToExit;
+		
+		public UserSelectionResult(Optional<MavenUid> selected, boolean wantsToExit) {
+			this.selected = selected;
+			this.wantsToExit = wantsToExit;
 		}
 	}
 	
@@ -141,7 +162,8 @@ public class Analyzer {
 		    	String absoluteDir = jarPath.toAbsolutePath().normalize().getParent().toString();
 		    	Jar jar = new Jar(jarName, absoluteDir, jarHash);
 				
-				var sorted = jarAnalyzer.analyzeOffline(jar, compressedIn);
+				var jarAnalysisResult = jarAnalyzer.analyzeOffline(jar, compressedIn);
+				var sorted = jarAnalysisResult.sortedValueCandidates;
 				
 				if (!args.offline) {
 					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
@@ -163,12 +185,12 @@ public class Analyzer {
 					var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
 					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
 					
-					waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+					waiting.add(new JarAnalysisWaitingForCompletion(jar, jarAnalysisResult, checkResultsWithVersion, checkResultsNoVersion));
 				} else {
 					var checkResultsWithVersion = CompletableFuture.completedFuture(Set.<UidCheck>of());
 					var checkResultsNoVersion = CompletableFuture.completedFuture(Map.<MavenUid, Set<UidCheck>>of());
 					
-					waiting.add(new JarAnalysisWaitingForCompletion(jar, sorted, checkResultsWithVersion, checkResultsNoVersion));
+					waiting.add(new JarAnalysisWaitingForCompletion(jar, jarAnalysisResult, checkResultsWithVersion, checkResultsNoVersion));
 				}
 				
 				jarIndex++;
@@ -183,6 +205,8 @@ public class Analyzer {
 	    System.out.println("Online-Check initializing...");
 	    
 	    var jarReports = new ArrayList<JarReport>(waiting.size());
+	    
+	    boolean userExit = false;
 	    
 	    // then wait for each jar to finish online analysis to complete analysis
 	    for (var jarAnalysis : waiting) {
@@ -206,7 +230,12 @@ public class Analyzer {
 	    	
 	    	if (selected.isEmpty()) {
 	    		if (args.interactive) {
-		    		var selectedUid = userSelectCandidate(cli, jarAnalysis);
+	    			var userResult = userSelectCandidate(cli, jarAnalysis);
+	    			if (userResult.wantsToExit) {
+	    				userExit = true;
+	    				break;
+	    			}
+		    		var selectedUid = userResult.selected;
 		    		if (selectedUid.isPresent()) {
 		    			var jar = jarAnalysis.jar;
 		    			selected = Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, null, selectedUid.get()));
@@ -218,28 +247,32 @@ public class Analyzer {
 	    	printer.printJarEndSeparator();
 	    }
 	    
-	    int total = waiting.size();
-	    int skipped = total - jarReports.size();
-	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
-	    
-	    if (jarReports.size() >= 1) {
-	    	// write report
-		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
-			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
-			
-			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
-		    
-		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
-		    var report = new AnalysisReport(generalInfo, jarReports);
-		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
-		    
-	    	try {
-	    		jsonWriter.writeValue(reportFile.toFile(), report);
-			} catch (IOException e) {
-				throw new UncheckedIOException(e);
-			}
+	    if (!userExit) {
+	    	int total = waiting.size();
+	 	    int skipped = total - jarReports.size();
+	 	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
+	 	    
+	 	    if (jarReports.size() >= 1) {
+	 	    	// write report
+	 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+	 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
+	 			
+	 			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
+	 		    
+	 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
+	 		    var report = new AnalysisReport(generalInfo, jarReports);
+	 		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+	 		    
+	 	    	try {
+	 	    		jsonWriter.writeValue(reportFile.toFile(), report);
+	 			} catch (IOException e) {
+	 				throw new UncheckedIOException(e);
+	 			}
+	 	    } else {
+	 	    	cli.println("Skipping report file because no jars were resolved.", LOG::info);
+	 	    }
 	    } else {
-	    	cli.println("Skipping report file because no jars were resolved.", LOG::info);
+	    	cli.println("Skipping report file because user exited.", LOG::info);
 	    }
 		
     	if (!args.offline) {
@@ -275,10 +308,13 @@ public class Analyzer {
     	return Optional.empty();
 	}
 	
-	private Optional<MavenUid> userSelectCandidate(Cli cli, JarAnalysisWaitingForCompletion jarAnalysis) {
+	private UserSelectionResult userSelectCandidate(Cli cli, JarAnalysisWaitingForCompletion jarAnalysis) {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
+    	var manifest = jarAnalysis.offlineResult.manifestFile;
+    	
 		var pad = "  ";
+		var optionPad = pad + "    ";
 		
 		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {
 			String value = uid.fullUid.get(component);
@@ -289,16 +325,23 @@ public class Analyzer {
 		};
 		
 		System.out.println(pad + "Please complete missing groupId/artifactId/version info for this jar.");
-		System.out.println(pad + "Enter the value or enter '<number>!' to select a proposal.");
+		System.out.println(pad + "The following commands are always available:");
+		System.out.println(optionPad + "exit! <exit>");
+		System.out.println(optionPad + "s!    <skip this jar>");
+		if (manifest.isPresent()) {
+			System.out.println(optionPad + "m!    <show manifest>");
+		}
 		
 		boolean jarSkipped = false;
+		boolean exit = false;
+		
 		var selectedValues = new ArrayList<String>(3);
 		for (var component : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID, MavenUidComponent.VERSION)) {
 			// not using MavenUidComponent.values() to guarantee order
 			
 			// collect all proposals
 			var proposals = new LinkedHashSet<String>();
-			for (var candidate : jarAnalysis.offlineResult.get(component)) {
+			for (var candidate : jarAnalysis.offlineResult.sortedValueCandidates.get(component)) {
 				if (candidate.scoreSum >= PROPOSE_CANDIDATE_THRESHOLD) {
 					proposals.add(candidate.value);
 				}
@@ -318,28 +361,38 @@ public class Analyzer {
 			
 			// print proposals
 			System.out.println();
-			System.out.println(pad + "Enter " + component.xmlTagName + " or select from:");
-			var index = 0;
-			System.out.println(pad + "    " + index + "! <skip this jar>");
+			System.out.println(pad + "Enter " + component.xmlTagName + " directly or select from:");
+			var index = 1;
 			for (String proposal : proposals) {
+				System.out.println(optionPad + index + "! " + proposal);
 				index++;
-				System.out.println(pad + "    " + index + "! " + proposal);
 			}
 			
 			// ask user to choose / enter
 			boolean hasCorrectInput = false;
-			String selected;
+			String selected = null;
 			do {
 				String inputString = cli.nextLine().trim();
 				try {
 					if (inputString.endsWith("!")) {
-						var selectedIndex = Integer.parseInt(inputString.substring(0, inputString.length() - 1));
-						if (selectedIndex == 0) {
-							selected = null;
+						if (inputString.equals("exit!")) {
+							exit = true;
+							break;
+						} else if (inputString.equals("s!")) {
 							jarSkipped = true;
 							break;
+						} else if (manifest.isPresent() && inputString.equals("m!")) {
+							System.out.println();
+							System.out.println(manifest.get().fileAsString);
+							System.out.println();
+							cli.askUserToContinue(pad, "Press Enter to continue choosing a " + component.xmlTagName + "..." );
 						} else {
-							selected = List.copyOf(proposals).get(selectedIndex - 1);
+							var selectedIndex = Integer.parseInt(inputString.substring(0, inputString.length() - 1));
+							if (selectedIndex >= 1 && selectedIndex <= proposals.size()) {
+								selected = List.copyOf(proposals).get(selectedIndex - 1);
+							} else {
+								System.out.println(pad + "Given selection is not in valid range 1 - " + proposals.size() + "!");
+							}
 						}
 					} else {
 						selected = inputString;
@@ -347,24 +400,30 @@ public class Analyzer {
 				} catch(NumberFormatException e) {
 					selected = inputString;
 				}
-				Pattern pattern = Regex.getPatternForUserInputValidation(component);
-				Matcher matcher = pattern.matcher(selected);
-				if (matcher.find()) {
-					hasCorrectInput = true;
-				} else {
-					System.out.println("  Given value does not seem to be a valid " + component.xmlTagName + "!");
-					System.out.println("  Value must match regex: " + pattern.toString());
+				if (selected != null) {
+					if (selected.isEmpty()) {
+						System.out.println(pad + "Empty! Please enter the value directly or enter '<number>!' to select a proposal from above.");
+					} else {
+						Pattern pattern = Regex.getPatternForUserInputValidation(component);
+						Matcher matcher = pattern.matcher(selected);
+						if (matcher.find()) {
+							hasCorrectInput = true;
+						} else {
+							System.out.println(pad + "Given value does not seem to be a valid " + component.xmlTagName + "!");
+							System.out.println(pad + "Value must match regex: " + pattern.toString());
+						}
+					}
 				}
 			} while (!hasCorrectInput);
 			
-			if (jarSkipped) {
+			if (jarSkipped || exit) {
 				break;
 			}
 			selectedValues.add(selected);
 		}
 		
 		Optional<MavenUid> result;
-		if (jarSkipped) {
+		if (jarSkipped || exit) {
 			System.out.println(pad + "Skipped! Jar '" + jarAnalysis.jar.name + "' will not appear in result report!");
 			result = Optional.empty();
 		} else {
@@ -376,6 +435,6 @@ public class Analyzer {
 		}
 		cli.askUserToContinue(pad);
 		
-		return result;
+		return new UserSelectionResult(result, exit);
 	}
 }

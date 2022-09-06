@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.analyze.Analyzer.Jar;
+import de.eitco.mavenizer.analyze.Analyzer.JarAnalysisResult;
 import de.eitco.mavenizer.analyze.ValueCandidate.ValueSource;
 import de.eitco.mavenizer.analyze.jar.ClassFilepathAnalyzer;
 import de.eitco.mavenizer.analyze.jar.ClassTimestampAnalyzer;
@@ -33,7 +34,7 @@ import de.eitco.mavenizer.analyze.jar.ManifestAnalyzer;
 import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
 
 public class JarAnalyzer {
-
+	
 	public static enum JarAnalyzerType {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
@@ -117,7 +118,7 @@ public class JarAnalyzer {
 	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	private final ClassTimestampAnalyzer timeAnalyzer = new ClassTimestampAnalyzer();
 	
-	public Map<MavenUidComponent, List<ValueCandidate>> analyzeOffline(Jar jar, InputStream compressedJarInput) {
+	public JarAnalysisResult analyzeOffline(Jar jar, InputStream compressedJarInput) {
 		
 		List<FileBuffer> pomFiles = new ArrayList<>(2);
 		List<JarEntry> classFiles = new ArrayList<>();
@@ -166,7 +167,7 @@ public class JarAnalyzer {
 			currentSorted.sort(newScoreComparator);
 		}
 		
-		return sorted;
+		return new JarAnalysisResult(manifest, sorted);
 	}
 	
 	private Optional<ManifestFile> readJarEntry(ZipEntry entry, InputStream in, Consumer<JarEntry> onClass, Consumer<FileBuffer> onMavenFile) {

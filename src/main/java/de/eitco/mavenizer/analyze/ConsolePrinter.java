@@ -42,7 +42,7 @@ public class ConsolePrinter {
     	
 		System.out.println();
 		System.out.println("    OFFLINE RESULT");
-		printOfflineAnalysisResults(jarAnalysis.offlineResult, padding);
+		printOfflineAnalysisResults(jarAnalysis.offlineResult.sortedValueCandidates, padding);
 		if (!offline) {
 			System.out.println();
 			System.out.println("    ONLINE RESULT");

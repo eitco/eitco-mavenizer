@@ -159,6 +159,11 @@ public class Cli {
 		scanner.nextLine();
 	}
 	
+	public void askUserToContinue(String pad, String message) {
+		System.out.println(pad + message);
+		scanner.nextLine();
+	}
+	
 	public void println(String msg, Consumer<String> logFunction) {
 		logFunction.accept(msg);
 		System.out.println(msg);
