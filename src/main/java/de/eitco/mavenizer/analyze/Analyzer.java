@@ -46,7 +46,8 @@ public class Analyzer {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Analyzer.class);
 	
-	private static final int VERSION_SEARCH_THRESHOLD = 1;// if no version with higher score is found by offline analysis, random online versions will be tried
+	private static final int VERSION_SEARCH_MAX_THRESHOLD = 1;// if no version with higher score is found by offline analysis, random online versions will be tried
+	private static final int VERSION_NO_SEARCH_THRESHOLD = 5;// if there is a version with this score or higher, random  online version search will not be tried
 	private static final int PROPOSE_CANDIDATE_THRESHOLD = 1;// minimum score needed for a candidate value to be put into list displayed to user for selection
 	
 	public static class Jar {
@@ -168,6 +169,11 @@ public class Analyzer {
 				if (!args.offline) {
 					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
 					
+					int highestVersionScore = toCheck.entrySet().stream()
+							.filter(entry -> entry.getKey().version != null)
+							.mapToInt(entry -> entry.getValue().get(MavenUidComponent.VERSION))
+							.max().orElse(0);
+					
 					var toCheckWithVersion = toCheck.entrySet().stream()
 							.filter(entry -> entry.getKey().version != null)
 							.map(Map.Entry::getKey)
@@ -175,8 +181,13 @@ public class Analyzer {
 					
 					var toCheckNoVersion = toCheck.entrySet().stream()
 							.filter(entry -> {
-								return entry.getKey().version == null
-										|| entry.getValue().get(MavenUidComponent.VERSION) <= VERSION_SEARCH_THRESHOLD;// check if score too low
+								if (entry.getKey().version == null) {
+									return true;
+								} else {
+									int versionScore = entry.getValue().get(MavenUidComponent.VERSION);
+									// if score too low and no other good version candidates
+									return highestVersionScore <= VERSION_NO_SEARCH_THRESHOLD && versionScore <= VERSION_SEARCH_MAX_THRESHOLD;
+								}
 							})
 							.map(Map.Entry::getKey)
 							.map(uid -> new MavenUid(uid.groupId, uid.artifactId, null))// null out version
@@ -300,7 +311,7 @@ public class Analyzer {
         		}
     		}
     	}
-    	if (foundOnline.size() == 1) {
+    	if (foundOnline.size() >= 1) {
     		var uid = foundOnline.get(0);
     		var jar = jarAnalysis.jar;
     		return Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, uid.matchType, uid.fullUid));

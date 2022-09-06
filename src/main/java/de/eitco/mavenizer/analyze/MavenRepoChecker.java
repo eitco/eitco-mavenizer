@@ -175,6 +175,10 @@ public class MavenRepoChecker {
 				.collect(Collectors.toList());
 	}
 	
+	/**
+	 * @return Map of candidate UIDs that should be checked online, with the summed scores of each UID component.
+	 *   Can contain UIDs where version is null, if given version's scores did no pass threshold check or if no versions were passed.
+	 */
 	public Map<MavenUid, Map<MavenUidComponent, Integer>> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
 		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= ONLINE_SEARCH_THRESHOLD;
 		
