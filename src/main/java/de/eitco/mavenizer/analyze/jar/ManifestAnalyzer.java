@@ -45,11 +45,11 @@ public class ManifestAnalyzer {
 					String version = matcher.group(Helper.Regex.CAP_GROUP_VERSION);
 					if (version != null) {
 						var attrSource = attrName + ": '" + attrValue + "'";
-						
-						result.addCandidate(uidComponent, version, 3, attrSource);
-						if (!version.equals(attrValue)) {
-							result.addCandidate(uidComponent, attrValue, 1, attrSource);
+						var confidence = version.equals(attrValue) ? 3 : 1;
+						if (VERSION_ATTRIBUTE_LOW_CONFIDENCE.contains(attrName)) {
+							confidence--;
 						}
+						result.addCandidate(uidComponent, version, confidence, attrSource);
 					}
 				}
 			} else if (Attribute.stringValues.contains(attrName)) {
@@ -157,7 +157,9 @@ public class ManifestAnalyzer {
 			"Ant-Version",
 			"Manifest-Version",
 			"Bundle-ManifestVersion",
-			"Archiver-Version",
+			"Archiver-Version"
+			);
+	public static Set<String> VERSION_ATTRIBUTE_LOW_CONFIDENCE = Set.of(
 			"Specification-Version" // this attribute sometimes does not contain the minor version and is usually not the only version attribute anyway
 			);
 	
