@@ -40,16 +40,28 @@ public class ManifestAnalyzer {
 				var uidComponent = MavenUidComponent.VERSION;
 				var attrValue = entry.getValue().trim();
 				
-				Matcher matcher = Helper.Regex.attributeVersion.matcher(attrValue);
+				Matcher matcher = Helper.Regex.versionWidthOptionalClassifiers.matcher(attrValue);
 				if (matcher.find()) {
 					String version = matcher.group(Helper.Regex.CAP_GROUP_VERSION);
 					if (version != null) {
+						boolean hasClassifiers = !version.equals(attrValue);
 						var attrSource = attrName + ": '" + attrValue + "'";
-						var confidence = version.equals(attrValue) ? 3 : 1;
-						if (VERSION_ATTRIBUTE_LOW_CONFIDENCE.contains(attrName)) {
-							confidence--;
+						// version without classifiers
+						{
+							var confidence = !hasClassifiers ? 3 : 1;
+							if (VERSION_ATTRIBUTE_LOW_CONFIDENCE.contains(attrName)) {
+								confidence--;
+							}
+							result.addCandidate(uidComponent, version, confidence, attrSource);
 						}
-						result.addCandidate(uidComponent, version, confidence, attrSource);
+						// version with classifiers if it exists
+						if (hasClassifiers) {
+							var confidence = 1;
+							if (VERSION_ATTRIBUTE_LOW_CONFIDENCE.contains(attrName)) {
+								confidence--;
+							}
+							result.addCandidate(uidComponent, attrValue, confidence, attrSource);
+						}
 					}
 				}
 			} else if (Attribute.stringValues.contains(attrName)) {

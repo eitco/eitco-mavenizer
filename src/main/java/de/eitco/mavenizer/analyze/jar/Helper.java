@@ -49,14 +49,11 @@ public class Helper {
 		public final static String JAR_FILENAME_VERSION_SUFFIX =
 				"\\-(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
 		
-		public final static String ATTRIBUTE_VERSION =
+		public final static String VERSION_WITH_OPTIONAL_CLASSIFIERS =
 				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
 		
 		public final static String GROUP_ID = 
 				"^(?<" + CAP_GROUP_GROUP_ID + ">" + PATTERN_GROUP_ID_LIKE + ")$";
-		
-		public final static String VERSION =
-				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")$";
 		
 		// precompiled
 		public final static Pattern packageWithOptionalClass = Pattern.compile(PACKAGE_WITH_OPTIONAL_CLASS);
@@ -65,15 +62,14 @@ public class Helper {
 		public final static Pattern artifactIdLike = Pattern.compile(ARTIFACT_ID_LIKE);
 		public final static Pattern optionalPackageWithArtifactIdLikeAsLeaf = Pattern.compile(OPTIONAL_PACKAGE_WITH_ARTIFACT_ID_LIKE_AS_LEAF);
 		public final static Pattern jarFilenameVersionSuffix = Pattern.compile(JAR_FILENAME_VERSION_SUFFIX);
-		public final static Pattern attributeVersion = Pattern.compile(ATTRIBUTE_VERSION);
+		public final static Pattern versionWidthOptionalClassifiers = Pattern.compile(VERSION_WITH_OPTIONAL_CLASSIFIERS);
 		public final static Pattern groupId = Pattern.compile(GROUP_ID);
-		public final static Pattern version = Pattern.compile(VERSION);
 		
 		public static Pattern getPatternForUserInputValidation(MavenUidComponent component) {
 			switch(component) {
 			case GROUP_ID: return Regex.groupId;
 			case ARTIFACT_ID: return Regex.artifactIdLike;
-			case VERSION: return Regex.version;
+			case VERSION: return Regex.versionWidthOptionalClassifiers;
 			}
 			throw new IllegalStateException();
 		}
