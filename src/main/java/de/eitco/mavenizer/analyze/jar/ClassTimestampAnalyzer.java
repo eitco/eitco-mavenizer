@@ -35,7 +35,7 @@ public class ClassTimestampAnalyzer {
 		
 		var highestCountEntry = 
 				datesToOccurence.entrySet().stream()
-			    .sorted(Entry.comparingByValue())
+			    .sorted(Entry.<LocalDate, Integer>comparingByValue().reversed())
 			    .findFirst();
 		
 		if (highestCountEntry.isPresent()) {
