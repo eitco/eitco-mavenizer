@@ -42,7 +42,7 @@ public class Generator {
 	@Parameters(commandDescription = "Generate install script or pom.xml from report file created by analyzer.")
 	public static class GeneratorArgs implements ResettableCommand {
 		
-		@Parameter(order = 10, description = "<path(s) to report file(s)>", required = true)
+		@Parameter(order = 10, description = "<path(s) to report file(s) or parent folder(s)>", required = true)
 		public List<String> reportFiles;
 		
 		@Parameter(order = 20, names = "-noScript", description = "Disable install script generation.")
@@ -138,11 +138,13 @@ public class Generator {
 		
 		LOG.info("Generator started with args: " + Arrays.toString(cli.getLastArgs()));
 		
+		List<Path> reportPaths = Util.getFiles(args.reportFiles, path -> path.getFileName().toString().toLowerCase().endsWith(".json"));
+		
 		ObjectMapper mapper = new ObjectMapper();
 		var analysisReports = new ArrayList<AnalysisReport>();
 		try {
-			for (var file : args.reportFiles) {
-				analysisReports.add(mapper.readValue(new File(file), AnalysisReport.class));
+			for (var path : reportPaths) {
+				analysisReports.add(mapper.readValue(path.toFile(), AnalysisReport.class));
 			}
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
