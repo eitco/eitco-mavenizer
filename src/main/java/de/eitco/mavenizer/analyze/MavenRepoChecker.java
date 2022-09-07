@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -54,6 +55,7 @@ import org.slf4j.LoggerFactory;
 import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.Util;
+import de.eitco.mavenizer.analyze.Analyzer.JarHashes;
 
 public class MavenRepoChecker {
 
@@ -81,7 +83,7 @@ public class MavenRepoChecker {
 	
 	public static enum OnlineMatch {
 		FOUND_MATCH_EXACT_SHA,
-		FOUND_MATCH_EXACT_CLASSNAMES,
+		FOUND_MATCH_EXACT_CLASSES_SHA,
 		FOUND_MATCH_SUPERSET_CLASSNAMES,
 		FOUND_NO_MATCH,
 		NOT_FOUND;
@@ -214,7 +216,7 @@ public class MavenRepoChecker {
 		return result;
 	}
 	
-	public CompletableFuture<Set<UidCheck>> checkOnline(String localJarHash, Set<MavenUid> uidCandidates) {
+	public CompletableFuture<Set<UidCheck>> checkOnline(JarHashes localHashes, Set<MavenUid> uidCandidates) {
 		return CompletableFuture.supplyAsync(() -> {
 			
 			Set<UidCheck> results = new LinkedHashSet<>();
@@ -230,11 +232,13 @@ public class MavenRepoChecker {
 							
 							var jarResult = downloadJar(uid, false);
 							if (jarResult.isPresent()) {
-								var onlineJarHash = Util.sha256(jarResult.get().downloaded);
-								if (localJarHash.equals(onlineJarHash)) {
+								var onlineHashes = Util.sha256(jarResult.get().downloaded);
+								if (localHashes.jarSha256.equals(onlineHashes.jarSha256)) {
 									return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_SHA, Optional.of(jarResult.get().url));
 								} else {
-									// TODO check classes
+									if (classHashesMatch(localHashes, onlineHashes)) {
+										return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA, Optional.of(jarResult.get().url));
+									}
 									return new UidCheck(uid, OnlineMatch.FOUND_NO_MATCH, Optional.empty());
 								}
 							} else {
@@ -260,7 +264,7 @@ public class MavenRepoChecker {
 		});
 	}
 	
-	public CompletableFuture<Map<MavenUid, Set<UidCheck>>> searchVersionsAndcheckOnline(String localJarHash, Set<MavenUid> uidCandidates) {
+	public CompletableFuture<Map<MavenUid, Set<UidCheck>>> searchVersionsAndcheckOnline(JarHashes localHashes, Set<MavenUid> uidCandidates) {
 		
 		return fullyInitialized().thenApplyAsync(__ -> {
 			var result = new HashMap<MavenUid, Set<UidCheck>>();
@@ -272,7 +276,7 @@ public class MavenRepoChecker {
 				var versions = downloadVersions(uid);
 				if (!versions.isEmpty()) {
 					var selectedVersions = selectVersionCandidates(uid, versions);
-					var fullUidResults = Util.run(() -> checkOnline(localJarHash, selectedVersions).get());
+					var fullUidResults = Util.run(() -> checkOnline(localHashes, selectedVersions).get());
 					result.put(uid, fullUidResults);
 				}
 			}
@@ -290,6 +294,21 @@ public class MavenRepoChecker {
 			onRemoteReposConfigured.cancel(true);
 			onSettingsFileWritten.get(5, TimeUnit.SECONDS);
 		});
+	}
+	
+	private boolean classHashesMatch(JarHashes localHashes, JarHashes onlineHashes) {
+		if (localHashes.classesToSha256.size() != onlineHashes.classesToSha256.size()) {
+			return false;
+		}
+		for (var localClassEntry : localHashes.classesToSha256.entrySet()) {
+			var classPath = localClassEntry.getKey();
+			var localClassHash = localClassEntry.getValue();
+			var onlineClassHash = onlineHashes.classesToSha256.get(classPath);
+			if (!Arrays.equals(localClassHash, onlineClassHash)) {
+				return false;
+			}
+		}
+		return true;
 	}
 	
 	private CompletableFuture<Void> deleteLocalTempRepo() {

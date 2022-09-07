@@ -165,7 +165,7 @@ public class Generator {
 				cli.println("Warning: Jar file not found: " + jarPath, LOG::warn);
 				areAllJarFilesValid = false;
 			} else {
-				var actualHash = Util.sha256(jarFile);
+				var actualHash = Util.sha256(jarFile).jarSha256;
 				var expectedHash = jar.sha256;
 				if (!actualHash.equals(expectedHash)) {
 					cli.println("Warning: Found jar file has different content compared to jar from report: " + jarPath, LOG::warn);

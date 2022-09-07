@@ -53,12 +53,22 @@ public class Analyzer {
 	public static class Jar {
 		public final String name;
 		public final String dir;
-		public final String sha256;
+		public final JarHashes hashes;
 		
-		public Jar(String name, String dir, String sha256) {
+		public Jar(String name, String dir, JarHashes hashes) {
 			this.name = name;
 			this.dir = dir;
-			this.sha256 = sha256;
+			this.hashes = hashes;
+		}
+	}
+	
+	public static class JarHashes {
+		public final String jarSha256;
+		public final Map<Path, byte[]> classesToSha256;// since we do not print class hashes, we can keep them as byte array
+		
+		public JarHashes(String jarSha256, Map<Path, byte[]> classesToSha256) {
+			this.jarSha256 = jarSha256;
+			this.classesToSha256 = classesToSha256;
 		}
 	}
 	
@@ -165,9 +175,9 @@ public class Analyzer {
 				ZipInputStream unzipIn = new ZipInputStream(new ByteArrayInputStream(compressedBytes));
 				
 				String jarName = jarPath.getFileName().toString();
-		    	String jarHash = Util.sha256(unzipIn);
+		    	JarHashes jarHashes = Util.sha256(unzipIn);
 		    	String absoluteDir = jarPath.toAbsolutePath().normalize().getParent().toString();
-		    	Jar jar = new Jar(jarName, absoluteDir, jarHash);
+		    	Jar jar = new Jar(jarName, absoluteDir, jarHashes);
 				
 				var jarAnalysisResult = jarAnalyzer.analyzeOffline(jar, compressedIn);
 				var sorted = jarAnalysisResult.sortedValueCandidates;
@@ -199,8 +209,8 @@ public class Analyzer {
 							.map(uid -> new MavenUid(uid.groupId, uid.artifactId, null))// null out version
 							.collect(Collectors.toSet());
 					
-					var checkResultsWithVersion = repoChecker.checkOnline(jarHash, toCheckWithVersion);
-					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHash, toCheckNoVersion);
+					var checkResultsWithVersion = repoChecker.checkOnline(jarHashes, toCheckWithVersion);
+					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHashes, toCheckNoVersion);
 					
 					waiting.add(new JarAnalysisWaitingForCompletion(jar, jarAnalysisResult, checkResultsWithVersion, checkResultsNoVersion));
 				} else {
@@ -255,7 +265,7 @@ public class Analyzer {
 		    		var selectedUid = userResult.selected;
 		    		if (selectedUid.isPresent()) {
 		    			var jar = jarAnalysis.jar;
-		    			selected = Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, null, selectedUid.get()));
+		    			selected = Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, null, selectedUid.get()));
 		    		}
 	    		}
 	    	}
@@ -302,7 +312,10 @@ public class Analyzer {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
     	
-    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA);
+    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> {
+    		return uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
+    				|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA);
+    	};
     	
     	var foundOnline = new ArrayList<UidCheck>(1);
     	for (var uid : checkResultsWithVersion) {
@@ -320,7 +333,7 @@ public class Analyzer {
     	if (foundOnline.size() >= 1) {
     		var uid = foundOnline.get(0);
     		var jar = jarAnalysis.jar;
-    		return Optional.of(new JarReport(jar.name, jar.dir, jar.sha256, uid.matchType, uid.fullUid));
+    		return Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, uid.matchType, uid.fullUid));
     	}
     	return Optional.empty();
 	}
@@ -337,7 +350,7 @@ public class Analyzer {
 			String value = uid.fullUid.get(component);
 			boolean shouldBeProposed = value != null
 					&& (uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
-					|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSNAMES));
+					|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA));
 			return shouldBeProposed ? Optional.of(value) : Optional.empty();
 		};
 		

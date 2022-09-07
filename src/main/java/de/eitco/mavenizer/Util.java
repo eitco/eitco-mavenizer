@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -21,9 +22,12 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+
+import de.eitco.mavenizer.analyze.Analyzer.JarHashes;
 
 public class Util {
 
@@ -137,34 +141,52 @@ public class Util {
 		return result;
 	}
 	
-	public static String sha256(ZipInputStream zipIn) {
+	public static JarHashes sha256(ZipInputStream zipIn) {
 		try {
-			var digest = MessageDigest.getInstance("SHA-256");
-			while (zipIn.getNextEntry() != null) {
-				updateDigest(zipIn, digest);
+			var classesResult = new HashMap<Path, byte[]>();
+			var emptyDigest = MessageDigest.getInstance("SHA-256");
+			var jarDigest = (MessageDigest) emptyDigest.clone();
+			
+			ZipEntry entry;
+			while ((entry = zipIn.getNextEntry()) != null) {
+				String nameLower = entry.getName().toLowerCase();
+				if (nameLower.endsWith(".class")) {
+					var classDigest = (MessageDigest) emptyDigest.clone();
+					updateDigests(zipIn, jarDigest, classDigest);
+					classesResult.put(Paths.get(entry.getName()), classDigest.digest());
+				} else {
+					updateDigests(zipIn, jarDigest);
+				}
 			}
-			byte[] hash = digest.digest();
-		    return new String(Base64.getEncoder().encode(hash));
+			
+			byte[] jarHash = jarDigest.digest();
+			var jarHashString = new String(Base64.getEncoder().encode(jarHash));
+		    return new JarHashes(jarHashString, classesResult);
+		    
 		} catch (NoSuchAlgorithmException e) {
 			throw new RuntimeException(e);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
+		} catch (CloneNotSupportedException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	private static void updateDigest(InputStream in, MessageDigest digest) {
+	private static void updateDigests(InputStream in, MessageDigest... digests) {
 		try {
 	    	byte[] buffer= new byte[8192 * 4];
 		    int count;
 		    while ((count = in.read(buffer)) > 0) {
-		        digest.update(buffer, 0, count);
+		    	for (var digest : digests) {
+		    		digest.update(buffer, 0, count);
+		    	}
 		    }
 	    } catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
 	}
 	
-	public static String sha256(File compressedFile) {
+	public static JarHashes sha256(File compressedFile) {
 	    try (ZipInputStream zipIn = new ZipInputStream(new FileInputStream(compressedFile))) {
 	    	return sha256(zipIn);
 	    } catch (IOException e) {

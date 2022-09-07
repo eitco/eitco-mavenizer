@@ -34,7 +34,7 @@ public class ConsolePrinter {
     		}
     	}
     	System.out.println();
-    	System.out.println("    SHA_256 (uncompressed): " + jarAnalysis.jar.sha256);
+    	System.out.println("    SHA_256 (uncompressed): " + jarAnalysis.jar.hashes.jarSha256);
     	
     	var padding = 8;
     	var pad = " ".repeat(padding);
@@ -117,10 +117,9 @@ public class ConsolePrinter {
 			System.out.println(pad + "Automatically selected values: " + selected);
 		}
 		if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)) {
-			System.out.println(pad + "Found identical jar online with uid: " + selected);
-		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSNAMES)) {
-			// TODO
-			System.out.println(pad + "Automatically selected values: " + selected);
+			System.out.println(pad + "Found identical jar online, UID: " + selected);
+		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA)) {
+			System.out.println(pad + "Found not fully identical jar with identical classes online, UID: " + selected);
 		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_SUPERSET_CLASSNAMES)) {
 			// TODO
 			System.out.println(pad + "Automatically selected values: " + selected);
