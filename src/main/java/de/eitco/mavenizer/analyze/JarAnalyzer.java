@@ -127,6 +127,10 @@ public class JarAnalyzer {
 			return readJarEntry(entry, in, classFiles::add, pomFiles::add);
 		});
 		
+		if (manifest.isEmpty()) {
+			LOG.warn("Did not find manifest in '" + jar.name + "'! Expected 'META-INF/MANIFEST.MF' to exist!");
+		}
+		
 		var collected = Map.<MavenUidComponent, Map<String, ValueCandidate>>of(
 				MavenUidComponent.GROUP_ID, new HashMap<>(),
 				MavenUidComponent.ARTIFACT_ID, new HashMap<>(),

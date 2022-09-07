@@ -231,6 +231,7 @@ public class Analyzer {
 	    var onlineCheckInitialized = false;
 	    System.out.println("Online-Check initializing...");
 	    
+	    var count = 1;
 	    var jarReports = new ArrayList<JarReport>(waiting.size());
 	    
 	    boolean userExit = false;
@@ -253,6 +254,8 @@ public class Analyzer {
 	    	}
 	    	
 	    	var selected = autoSelectCandidate(jarAnalysis);
+	    	
+	    	System.out.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
 	    	printer.printResults(jarAnalysis, selected, args.forceDetailedOutput, args.offline);
 	    	
 	    	if (selected.isEmpty()) {
@@ -272,6 +275,7 @@ public class Analyzer {
 	    	selected.ifPresent(jarReports::add);
 	    	
 	    	printer.printJarEndSeparator();
+	    	count++;
 	    }
 	    
 	    if (!userExit) {
@@ -391,7 +395,7 @@ public class Analyzer {
 			
 			// print proposals
 			System.out.println();
-			System.out.println(pad + "Enter " + component.xmlTagName + " directly or select from:");
+			System.out.println(pad + "Enter " + component.xmlTagName + " directly" + (proposals.isEmpty() ? "" : " or select from") + ":");
 			var index = 1;
 			for (String proposal : proposals) {
 				System.out.println(optionPad + index + "! " + proposal);

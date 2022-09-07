@@ -21,8 +21,9 @@ public class Helper {
 		public final static String PATTERN_CLASS = "[A-Z]\\w*";
 		public final static String PATTERN_SUBPACKAGE = "[a-z_][a-z0-9_]*";
 		public final static String PATTERN_ARTIFACT_ID_STRICT = "[a-z_][a-z0-9_\\-]*";
-		public final static String PATTERN_ARTIFACT_ID_LIKE = "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*";// sadly, log4j-1.2-api is a real artifactId, so we want to include period
+		public final static String PATTERN_ARTIFACT_ID_LIKE = "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*";// sadly, log4j-1.2-api is a real artifactId, so we want to include period, and allow uppercase letters
 		public final static String PATTERN_PACKAGE = "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_SUBPACKAGE + ")";
+		public final static String PATTERN_GROUP_ID_LIKE = "(" + PATTERN_PACKAGE + ")|([a-z_][a-z0-9_\\-]*)";// can be a package, but sadly could be something like "xml-apis"
 		public final static String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
 		public final static String PATTERN_CLASSIFIER = "(([0-9]+)|([a-zA-Z]+))";
 		
@@ -52,7 +53,7 @@ public class Helper {
 				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")([\\-\\.]" + PATTERN_CLASSIFIERS + ")?$";
 		
 		public final static String GROUP_ID = 
-				"^(?<" + CAP_GROUP_GROUP_ID + ">" + PATTERN_PACKAGE + ")$";// package has basically same syntax as groupId, change if untrue
+				"^(?<" + CAP_GROUP_GROUP_ID + ">" + PATTERN_GROUP_ID_LIKE + ")$";
 		
 		public final static String VERSION =
 				"^(?<" + CAP_GROUP_VERSION + ">" + PATTERN_VERSION + ")$";
@@ -71,7 +72,7 @@ public class Helper {
 		public static Pattern getPatternForUserInputValidation(MavenUidComponent component) {
 			switch(component) {
 			case GROUP_ID: return Regex.groupId;
-			case ARTIFACT_ID: return Regex.artifactIdLike;// allow uppercase letters
+			case ARTIFACT_ID: return Regex.artifactIdLike;
 			case VERSION: return Regex.version;
 			}
 			throw new IllegalStateException();

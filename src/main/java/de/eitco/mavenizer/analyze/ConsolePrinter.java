@@ -22,8 +22,6 @@ public class ConsolePrinter {
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
     	int totalOnlineCheckCount = checkResultsWithVersion.size() + checkResultsNoVersion.size();
     	
-    	System.out.println(jarAnalysis.jar.name);
-    	
     	// if result is clear, we skip detailed output
     	if (autoSelected.isPresent()) {
     		printAutoSelected(4, autoSelected.get().result, autoSelected.get().onlineCheck);
@@ -35,6 +33,9 @@ public class ConsolePrinter {
     	}
     	System.out.println();
     	System.out.println("    SHA_256 (uncompressed): " + jarAnalysis.jar.hashes.jarSha256);
+    	if (jarAnalysis.offlineResult.manifestFile.isEmpty()) {
+    		System.out.println("    WARNING: Jar is missing 'META-INF/MANIFEST.MF'!");
+    	}
     	
     	var padding = 8;
     	var pad = " ".repeat(padding);
