@@ -219,14 +219,13 @@ public class ManifestAnalyzer {
 	
 	/**
 	 * If value matches package pattern with leaf somewhat (foo.bar-baz), extract leaf (bar-baz).
-	 * Unlike {@link #extractPattern_PackageLeaf(String, int)}, this pattern allows leafs to contain hyphen.
+	 * Unlike {@link #extractPattern_PackageLeaf(String, int)}, this pattern allows leafs to contain hyphens and periods.
 	 */
 	private static List<ScoredValue> extractPattern_PackageLeafOrArtifactLeaf(String attributeValue, int confidenceLeaf) {
-		Matcher matcher = Helper.Regex.optionalPackageWithArtifactIdAsLeaf.matcher(attributeValue);
+		Matcher matcher = Helper.Regex.optionalPackageWithArtifactIdLikeAsLeaf.matcher(attributeValue);
 		if (matcher.find()) {
-			String pakkage = matcher.group(Helper.Regex.CAP_GROUP_PACKAGE);
-			if (pakkage != null) {
-				String leaf = Helper.CandidateExtractionHelper.getPackageLeaf(pakkage);
+			String leaf = matcher.group(Helper.Regex.CAP_GROUP_ARTIFACT_ID);
+			if (leaf != null) {
 				return List.of(new ScoredValue(leaf, confidenceLeaf));
 			}
 		}
