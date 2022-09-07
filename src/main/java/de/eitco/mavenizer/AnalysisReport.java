@@ -2,7 +2,7 @@ package de.eitco.mavenizer;
 
 import java.util.List;
 
-import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 public class AnalysisReport {
 	
@@ -10,6 +10,7 @@ public class AnalysisReport {
 		public boolean onlineCheckEnabled;
 		public List<String> remoteRepos;
 		
+		@SuppressWarnings("unused")
 		private AnalysisInfo() {
 			// for deserializer
 		} 
@@ -20,21 +21,23 @@ public class AnalysisReport {
 		}
 	}
 	
+	@JsonIgnoreProperties({"onlineCheck"})
 	public static class JarReport {
 		public String filename;
 		public String dir;
 		public String sha256;
-		public OnlineMatch onlineCheck;
+		public boolean foundOnRemote = false;
 		public MavenUid result;
 		
+		@SuppressWarnings("unused")
 		private JarReport() {
 			// for deserializer
 		}
-		public JarReport(String filename, String dir, String sha256, OnlineMatch onlineCheck, MavenUid result) {
+		public JarReport(String filename, String dir, String sha256, boolean foundOnRemote, MavenUid result) {
 			this.filename = filename;
 			this.dir = dir;
 			this.sha256 = sha256;
-			this.onlineCheck = onlineCheck;
+			this.foundOnRemote = foundOnRemote;
 			this.result = result;
 		}
 	}
@@ -44,6 +47,7 @@ public class AnalysisReport {
 	public AnalysisInfo analysisInfo;
 	public List<JarReport> jarResults;
 	
+	@SuppressWarnings("unused")
 	private AnalysisReport() {
 		// for deserializer
 	}

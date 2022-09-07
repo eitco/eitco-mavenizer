@@ -38,7 +38,6 @@ import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.JarAnalyzer.ManifestFile;
-import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
 
@@ -232,12 +231,13 @@ public class Analyzer {
 	    System.out.println("Online-Check initializing...");
 	    
 	    var count = 1;
-	    var jarReports = new ArrayList<JarReport>(waiting.size());
+	    var jarReportFutures = new ArrayList<CompletableFuture<JarReport>>(waiting.size());
 	    
 	    boolean userExit = false;
 	    
 	    // then wait for each jar to finish online analysis to complete analysis
 	    for (var jarAnalysis : waiting) {
+	    	var jar = jarAnalysis.jar;
 	    	
 	    	// MavenRepoChecker initialization might be finished asynchronously before this point in time,
     		// but we can only start to print after offline analysis is finished to not destroy RETURN_LINE printlns.
@@ -253,10 +253,12 @@ public class Analyzer {
 	    		System.out.println();
 	    	}
 	    	
-	    	var selected = autoSelectCandidate(jarAnalysis);
+	    	var autoSelected = autoSelectCandidate(jarAnalysis);
+	    	Optional<JarReport> selected = autoSelected.map(uid -> new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, true, uid.fullUid));
+	    	CompletableFuture<JarReport> selectedToBeChecked = null;
 	    	
 	    	System.out.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
-	    	printer.printResults(jarAnalysis, selected, args.forceDetailedOutput, args.offline);
+	    	printer.printResults(jarAnalysis, autoSelected, args.forceDetailedOutput, args.offline);
 	    	
 	    	if (selected.isEmpty()) {
 	    		if (args.interactive) {
@@ -265,14 +267,29 @@ public class Analyzer {
 	    				userExit = true;
 	    				break;
 	    			}
-		    		var selectedUid = userResult.selected;
-		    		if (selectedUid.isPresent()) {
-		    			var jar = jarAnalysis.jar;
-		    			selected = Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, null, selectedUid.get()));
+		    		var userSelectedUid = userResult.selected;
+		    		if (userSelectedUid.isPresent()) {
+		    			
+		    			// we check again to see if user has provided a UID of a jar that is available online and identical, using local remote cache if possible
+		    			if (!args.offline) {
+		    				var checkedSet = repoChecker.check(jar.hashes, Set.of(userSelectedUid.get()), true);
+		    				selectedToBeChecked = checkedSet.thenApply(set -> {
+		    					var uidCheck = set.iterator().next();
+		    					var foundOnRemote = uidCheck.matchType.isConsideredIdentical();
+		    					return new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get());
+		    				});
+		    			} else {
+		    				selected = Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, false, userSelectedUid.get()));
+		    			}
+		    			
 		    		}
 	    		}
 	    	}
-	    	selected.ifPresent(jarReports::add);
+	    	if (selected.isPresent()) {
+	    		jarReportFutures.add(CompletableFuture.completedFuture(selected.get()));
+	    	} else if (selectedToBeChecked != null) {
+	    		jarReportFutures.add(selectedToBeChecked);
+	    	}
 	    	
 	    	printer.printJarEndSeparator();
 	    	count++;
@@ -280,10 +297,10 @@ public class Analyzer {
 	    
 	    if (!userExit) {
 	    	int total = waiting.size();
-	 	    int skipped = total - jarReports.size();
+	 	    int skipped = total - jarReportFutures.size();
 	 	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
 	 	    
-	 	    if (jarReports.size() >= 1) {
+	 	    if (jarReportFutures.size() >= 1) {
 	 	    	// write report
 	 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
 	 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
@@ -291,6 +308,9 @@ public class Analyzer {
 	 			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
 	 		    
 	 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
+	 		    var jarReports = jarReportFutures.stream()
+	 		    		.map(CompletableFuture::join)
+	 		    		.collect(Collectors.toList());
 	 		    var report = new AnalysisReport(generalInfo, jarReports);
 	 		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
 	 		    
@@ -312,14 +332,11 @@ public class Analyzer {
     	}
 	}
 	
-	private Optional<JarReport> autoSelectCandidate(JarAnalysisWaitingForCompletion jarAnalysis) {
+	private Optional<UidCheck> autoSelectCandidate(JarAnalysisWaitingForCompletion jarAnalysis) {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
     	
-    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> {
-    		return uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
-    				|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA);
-    	};
+    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.matchType.isConsideredIdentical();
     	
     	var foundOnline = new ArrayList<UidCheck>(1);
     	for (var uid : checkResultsWithVersion) {
@@ -335,9 +352,7 @@ public class Analyzer {
     		}
     	}
     	if (foundOnline.size() >= 1) {
-    		var uid = foundOnline.get(0);
-    		var jar = jarAnalysis.jar;
-    		return Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, uid.matchType, uid.fullUid));
+    		return Optional.of(foundOnline.get(0));
     	}
     	return Optional.empty();
 	}
@@ -352,9 +367,7 @@ public class Analyzer {
 		
 		BiFunction<UidCheck, MavenUidComponent, Optional<String>> onlineUidProposal = (uid, component) -> {
 			String value = uid.fullUid.get(component);
-			boolean shouldBeProposed = value != null
-					&& (uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
-					|| uid.matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA));
+			boolean shouldBeProposed = value != null && (uid.matchType.isConsideredIdentical());
 			return shouldBeProposed ? Optional.of(value) : Optional.empty();
 		};
 		

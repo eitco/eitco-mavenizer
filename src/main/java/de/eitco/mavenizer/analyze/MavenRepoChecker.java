@@ -87,13 +87,18 @@ public class MavenRepoChecker {
 		FOUND_MATCH_SUPERSET_CLASSNAMES,
 		FOUND_NO_MATCH,
 		NOT_FOUND;
+		
+		public boolean isConsideredIdentical() {
+			return this.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)
+					|| this.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA);
+		}
 	}
 	
 	private static class OnlineJarResult {
-		String url;
+		Optional<String> url;
 		File downloaded;
 		
-		public OnlineJarResult(String url, File downloaded) {
+		public OnlineJarResult(Optional<String> url, File downloaded) {
 			this.url = url;
 			this.downloaded = downloaded;
 		}
@@ -217,6 +222,10 @@ public class MavenRepoChecker {
 	}
 	
 	public CompletableFuture<Set<UidCheck>> checkOnline(JarHashes localHashes, Set<MavenUid> uidCandidates) {
+		return check(localHashes, uidCandidates, false);
+	}
+	
+	public CompletableFuture<Set<UidCheck>> check(JarHashes localHashes, Set<MavenUid> uidCandidates, boolean expectLocalRemoteAsSource) {
 		return CompletableFuture.supplyAsync(() -> {
 			
 			Set<UidCheck> results = new LinkedHashSet<>();
@@ -230,14 +239,14 @@ public class MavenRepoChecker {
 					if (checkedFuture == null) {
 						checkedFuture = fullyInitialized().thenApplyAsync(__ -> {
 							
-							var jarResult = downloadJar(uid, false);
+							var jarResult = downloadJar(uid, false, expectLocalRemoteAsSource);
 							if (jarResult.isPresent()) {
 								var onlineHashes = Util.sha256(jarResult.get().downloaded);
 								if (localHashes.jarSha256.equals(onlineHashes.jarSha256)) {
-									return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_SHA, Optional.of(jarResult.get().url));
+									return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_SHA, jarResult.get().url);
 								} else {
 									if (classHashesMatch(localHashes, onlineHashes)) {
-										return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA, Optional.of(jarResult.get().url));
+										return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA, jarResult.get().url);
 									}
 									return new UidCheck(uid, OnlineMatch.FOUND_NO_MATCH, Optional.empty());
 								}
@@ -324,9 +333,9 @@ public class MavenRepoChecker {
 	private CompletableFuture<UidCheck> assertOnlineReposReachable() {
 		var testCheck = CompletableFuture.supplyAsync(() -> {
 			try {
-				var checkResult = downloadJar(onlineRepoTestJar, true);// throwOnFail guarantees that jar could be downloaded
+				var checkResult = downloadJar(onlineRepoTestJar, true, false);// throwOnFail guarantees that jar could be downloaded
 				LOG.info("Online repositories are reachable!");
-				return new UidCheck(onlineRepoTestJar, OnlineMatch.FOUND_MATCH_EXACT_SHA, Optional.of(checkResult.get().url));
+				return new UidCheck(onlineRepoTestJar, OnlineMatch.FOUND_MATCH_EXACT_SHA, checkResult.get().url);
 			} catch (Exception e) {
 				if (e.getClass().equals(RuntimeException.class) || e.getClass().equals(UncheckedIOException.class)) {
 					e = (Exception) e.getCause();
@@ -387,7 +396,7 @@ public class MavenRepoChecker {
 		} 
 	}
 	
-	private Optional<OnlineJarResult> downloadJar(MavenUid uid, boolean throwOnFail) {
+	private Optional<OnlineJarResult> downloadJar(MavenUid uid, boolean throwOnFail, boolean expectLocalRemoteAsSource) {
 		
 		var artifact = new DefaultArtifact(uid.groupId, uid.artifactId, "jar", uid.version);
 		var request = new ArtifactRequest(artifact, remoteRepos, null);
@@ -398,15 +407,19 @@ public class MavenRepoChecker {
 				LOG.debug("Sucess! Jar found for " + uid + " in repo: " + response.getRepository());
 				try {
 					String url = "";
-					var repo = response.getRepository();
-					if (repo instanceof RemoteRepository) {
-						var remote = (RemoteRepository) response.getRepository();
-						var layout = repoLayoutProvider.newRepositoryLayout(repoSystemSession, remote);
-						url = remote.getUrl() + layout.getLocation(artifact, false).toString();
+					if (expectLocalRemoteAsSource) {
+						url = null;// if local repo can be used, caller does not get an url since it would be unreliable anyway
 					} else {
-						throw new IllegalStateException("Jar '" + uid + "' was retrieved from local reporitory, but lookup should have been cached instead! Cannot return remote URL.");
+						var repo = response.getRepository();
+						if (repo instanceof RemoteRepository) {
+							var remote = (RemoteRepository) response.getRepository();
+							var layout = repoLayoutProvider.newRepositoryLayout(repoSystemSession, remote);
+							url = remote.getUrl() + layout.getLocation(artifact, false).toString();
+						} else {
+							throw new IllegalStateException("Jar '" + uid + "' was retrieved from local reporitory, but lookup should have been cached instead! Cannot return remote URL.");
+						}
 					}
-					return Optional.of(new OnlineJarResult(url, response.getArtifact().getFile()));
+					return Optional.of(new OnlineJarResult(Optional.ofNullable(url), response.getArtifact().getFile()));
 				} catch (NoRepositoryLayoutException e) {
 					throw new RuntimeException();
 				}

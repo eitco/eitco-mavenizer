@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 
-import de.eitco.mavenizer.AnalysisReport.JarReport;
 import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
@@ -16,7 +15,7 @@ import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 
 public class ConsolePrinter {
 	
-	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, Optional<JarReport> autoSelected, boolean forceDetailedOutput, boolean offline) {
+	public void printResults(JarAnalysisWaitingForCompletion jarAnalysis, Optional<UidCheck> autoSelected, boolean forceDetailedOutput, boolean offline) {
 		
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
@@ -24,7 +23,7 @@ public class ConsolePrinter {
     	
     	// if result is clear, we skip detailed output
     	if (autoSelected.isPresent()) {
-    		printAutoSelected(4, autoSelected.get().result, autoSelected.get().onlineCheck);
+    		printAutoSelected(4, autoSelected.get().fullUid, autoSelected.get().matchType);
     		if (forceDetailedOutput) {
     			System.out.println("    Forced details:");
     		} else {
