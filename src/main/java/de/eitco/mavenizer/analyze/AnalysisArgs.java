@@ -48,7 +48,7 @@ public class AnalysisArgs implements ResettableCommand {
 	public void setDefaults() {
 		jars = null;
 		interactive = false;
-		reportFile = "./eito-mavenizer-report-" + DATETIME_SUBSTITUTE + ".json";
+		reportFile = "./eitco-mavenizer-report-" + DATETIME_SUBSTITUTE + ".json";
 		forceDetailedOutput = false;
 		offline = false;
 		limit = -1;

@@ -45,6 +45,9 @@ public class Generator {
 		@Parameter(order = 10, description = "<path(s) to report file(s) or parent folder(s)>", required = true)
 		public List<String> reportFiles;
 		
+		@Parameter(order = 15, names = { "-scriptCommand" , "-c" }, description = "Command executed for each jar. Additional arguments can be included.")
+		String scriptCommand;
+		
 		@Parameter(order = 20, names = "-noScript", description = "Disable install script generation.")
 		boolean noScript;
 		
@@ -63,6 +66,8 @@ public class Generator {
 		@Override
 		public void setDefaults() {
 			reportFiles = null;
+			scriptCommand = "mvn install:install-file";
+			noScript = false;
 			scriptTypes = new HashSet<>();
 			scriptTypes.add(ScriptType.POWERSHELL.fileExtension);
 			scriptFile = "eitco-mavenizer-install";
@@ -180,6 +185,16 @@ public class Generator {
 			cli.askUserToContinue("    ");
 		}
 		
+		// TODO maybe check again with MavenRepoChecker
+		System.out.println("The following jars were found online according to their reports.");
+		System.out.println("Therefore they will be excluded from install script(s).");
+		jarReports.stream()
+				.filter(jar -> jar.foundOnRemote)
+				.forEach(jar -> {
+					System.out.println("    " + StringUtil.rightPad(jar.filename, 25) + "  ( " + jar.dir + " )");
+				});
+		System.out.println();
+		
 		if (!args.noScript) {
 			for (var scriptType : args.scriptTypes) {
 				var type = ScriptType.fileExtensions.get(scriptType);
@@ -188,13 +203,21 @@ public class Generator {
 				if (type.equals(ScriptType.POWERSHELL)) {
 					
 					for (var jar : jarReports) {
-						var jarPath = Paths.get(jar.dir).resolve(jar.filename);
-						var uid = jar.result;
-						var repositoryId = "";
-						var repositoryUrl = "";
-						fileContent += ".\\mvn deploy:deploy-file -Dfile='" + jarPath + "' -DgroupId='" + uid.groupId + "' -DartifactId='" + uid.artifactId
-								+ "' -Dpackaging='jar' -Dversion='1.0' -DgeneratePom='true' -DrepositoryId='" + repositoryId + "' -Durl='" + repositoryUrl + "'"
-								+ "\n";
+						if (!jar.foundOnRemote) {
+							var jarPath = Paths.get(jar.dir).resolve(jar.filename);
+							var uid = jar.result;
+							
+							fileContent += args.scriptCommand;
+							fileContent += " -Dpackaging='jar'";
+							fileContent += " -Dfile='" + jarPath + "'";
+							fileContent += " -DgroupId='" + uid.groupId + "'";
+							fileContent += " -DartifactId='" + uid.artifactId + "'";
+							fileContent += " -Dversion='" + uid.version + "'";
+							if (uid.classifier != null && !uid.classifier.isBlank()) {
+								fileContent += " -Dclassifier='" + uid.classifier + "'";
+							}
+							fileContent += "\n";
+						}
 					}
 				}
 				
@@ -221,10 +244,14 @@ public class Generator {
 			fileContent += "	<dependencies>" + "\n";
 			
 			for (var jar : jarReports) {
+				var uid = jar.result;
 				fileContent += "		<dependency>" + "\n";
-				fileContent += "			<groupId>" + jar.result.groupId + "</groupId>" + "\n";
-				fileContent += "			<artifactId>" + jar.result.artifactId + "</artifactId>" + "\n";
-				fileContent += "			<version>" + jar.result.version + "</version>" + "\n";
+				fileContent += "			<groupId>" + uid.groupId + "</groupId>" + "\n";
+				fileContent += "			<artifactId>" + uid.artifactId + "</artifactId>" + "\n";
+				fileContent += "			<version>" + uid.version + "</version>" + "\n";
+				if (uid.classifier != null && !uid.classifier.isBlank()) {
+					fileContent += "			<classifier>" + uid.classifier + "</classifier>" + "\n";
+				}
 				fileContent += "		</dependency>" + "\n";
 			}
 			

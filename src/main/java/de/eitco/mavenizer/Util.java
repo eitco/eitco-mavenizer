@@ -31,6 +31,8 @@ import de.eitco.mavenizer.analyze.Analyzer.JarHashes;
 
 public class Util {
 
+	public static final Path CURRENT_DIR = Paths.get(".");
+	
 	public static Optional<String> validateFileCanBeCreated(String pathString) {
 		Path path = Paths.get(pathString);
 		Path dir = path.toAbsolutePath().getParent();

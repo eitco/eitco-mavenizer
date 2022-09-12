@@ -253,8 +253,10 @@ public class Analyzer {
 	    		System.out.println();
 	    	}
 	    	
+	    	var jarDirForReport = Paths.get(".").resolve(Util.CURRENT_DIR.toAbsolutePath().relativize(Paths.get(jar.dir))).toString();
+	    	
 	    	var autoSelected = autoSelectCandidate(jarAnalysis);
-	    	Optional<JarReport> selected = autoSelected.map(uid -> new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, true, uid.fullUid));
+	    	Optional<JarReport> selected = autoSelected.map(uid -> new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, true, uid.fullUid));
 	    	CompletableFuture<JarReport> selectedToBeChecked = null;
 	    	
 	    	System.out.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
@@ -276,10 +278,10 @@ public class Analyzer {
 		    				selectedToBeChecked = checkedSet.thenApply(set -> {
 		    					var uidCheck = set.iterator().next();
 		    					var foundOnRemote = uidCheck.matchType.isConsideredIdentical();
-		    					return new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get());
+		    					return new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get());
 		    				});
 		    			} else {
-		    				selected = Optional.of(new JarReport(jar.name, jar.dir, jar.hashes.jarSha256, false, userSelectedUid.get()));
+		    				selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, false, userSelectedUid.get()));
 		    			}
 		    			
 		    		}

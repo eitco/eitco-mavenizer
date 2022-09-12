@@ -12,13 +12,12 @@ import java.util.stream.Collectors;
 
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
+import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.JarAnalyzer.JarAnalyzerType;
 import de.eitco.mavenizer.analyze.JarAnalyzer.JarEntry;
 import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class ClassFilepathAnalyzer {
-	
-	private final static Path CURRENT_DIR = Paths.get(".");
 	
 	public static final class FolderStats {
 		public final Path path;
@@ -51,7 +50,7 @@ public class ClassFilepathAnalyzer {
 		 * @param relativePath - Path of folder containing the class file, relative to THIS NODE.
 		 */
 		public void incrementClassCount(Path fullPath, Path relativePath) {
-			if (relativePath.equals(CURRENT_DIR)) {
+			if (relativePath.equals(Util.CURRENT_DIR)) {
 				// class found inside this folder
 				classCount++;
 			} else {
@@ -62,7 +61,7 @@ public class ClassFilepathAnalyzer {
 				var childName = relativePath.getName(0).toString();
 				var childFolder = children.computeIfAbsent(childName, key -> new FolderNode(path.resolve(childName)));
 				var pathDepth = relativePath.getNameCount();
-				var subPath = pathDepth == 1 ? CURRENT_DIR : relativePath.subpath(1, pathDepth);
+				var subPath = pathDepth == 1 ? Util.CURRENT_DIR : relativePath.subpath(1, pathDepth);
 				childFolder.incrementClassCount(fullPath, subPath);
 			}
 		}
@@ -91,7 +90,7 @@ public class ClassFilepathAnalyzer {
 	public void analyze(ValueCandidateCollector result, List<JarEntry> classes) {
 		
 		// convert paths into tree structure to make it possible to walk the tree to gather folder statistics
-		FolderNode folderTree = new FolderNode(CURRENT_DIR);
+		FolderNode folderTree = new FolderNode(Util.CURRENT_DIR);
 		for (var clazz : classes) {
 			var parent = clazz.path.getParent();
 			var versioned = clazz.path.startsWith(Paths.get("META-INF/versions"));

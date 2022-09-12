@@ -2,8 +2,6 @@ package de.eitco.mavenizer;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
 public class AnalysisReport {
 	
 	public static class AnalysisInfo {
@@ -21,7 +19,6 @@ public class AnalysisReport {
 		}
 	}
 	
-	@JsonIgnoreProperties({"onlineCheck"})
 	public static class JarReport {
 		public String filename;
 		public String dir;
