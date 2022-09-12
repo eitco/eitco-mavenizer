@@ -1,7 +1,8 @@
 package de.eitco.mavenizer;
 
 public class StringUtil {
-
+	private StringUtil() {}
+	
 	public static final String RETURN_LINE = "\r";
 	
 	public static String rightPad(String str, int minLength) {

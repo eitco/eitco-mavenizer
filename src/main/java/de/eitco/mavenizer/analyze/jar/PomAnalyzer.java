@@ -27,7 +27,7 @@ public class PomAnalyzer {
 
 	public void analyze(ValueCandidateCollector result, List<FileBuffer> pomFiles) {
 		
-		if (pomFiles.size() < 1) {
+		if (pomFiles.isEmpty()) {
 			return;
 		}
 		

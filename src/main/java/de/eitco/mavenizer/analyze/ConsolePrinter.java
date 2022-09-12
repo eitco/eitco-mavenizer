@@ -89,13 +89,13 @@ public class ConsolePrinter {
 			}
 			int valuePadding = 20;
 			for (ValueCandidate candidate : resultList) {
-				var valueString = scoredValueToString.apply(candidate.value, candidate.scoreSum);
+				var valueString = scoredValueToString.apply(candidate.value, candidate.getScoreSum());
 				
-				int valueLength = valueString.toString().length();
+				int valueLength = valueString.length();
 				valuePadding = Math.max(valuePadding, valueLength);
 			}
 			for (ValueCandidate candidate : resultList) {
-				var valueAndScore = scoredValueToString.apply(candidate.value, candidate.scoreSum);
+				var valueAndScore = scoredValueToString.apply(candidate.value, candidate.getScoreSum());
 				
 				for (int i = 0; i < candidate.sources.size(); i++) {
 					var source = candidate.sources.get(i);
@@ -115,8 +115,7 @@ public class ConsolePrinter {
 		var pad = " ".repeat(padding);
 		if (matchType == null || matchType.equals(OnlineMatch.FOUND_NO_MATCH) || matchType.equals(OnlineMatch.NOT_FOUND)) {
 			System.out.println(pad + "Automatically selected values: " + selected);
-		}
-		if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)) {
+		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_SHA)) {
 			System.out.println(pad + "Found identical jar online, UID: " + selected);
 		} else if (matchType.equals(OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA)) {
 			System.out.println(pad + "Found not fully identical jar with identical classes online, UID: " + selected);

@@ -23,7 +23,7 @@ public class ValueCandidate {
 	
 	public final String value;
 	public final List<ValueSource> sources;
-	public int scoreSum = 0;
+	private int scoreSum = 0;
 	
 	private final List<ValueSource> sourcesInternal = new ArrayList<>();
 	
@@ -37,5 +37,8 @@ public class ValueCandidate {
 	}
 	public void sortSources(Comparator<? super ValueSource> comparator) {
 		sourcesInternal.sort(comparator);
+	}
+	public int getScoreSum() {
+		return scoreSum;
 	}
 }

@@ -35,7 +35,7 @@ import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
 
 public class JarAnalyzer {
 	
-	public static enum JarAnalyzerType {
+	public enum JarAnalyzerType {
 		MANIFEST("Manifest"),
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
@@ -76,7 +76,7 @@ public class JarAnalyzer {
 		}
 	}
 	
-	public static enum PomFileType {
+	public enum PomFileType {
 		POM_XML("pom.xml"),
 		POM_PROPS("pom.properties");
 		
@@ -140,7 +140,7 @@ public class JarAnalyzer {
 		AnalyzerCandidateCollector collector = (JarAnalyzerType analyzer, MavenUidComponent component, String value, int confidenceScore, String sourceDetails) -> {
 			Map<String, ValueCandidate> candidates = collected.get(component);
 			
-			var candidate = candidates.computeIfAbsent(value, key -> new ValueCandidate(key));
+			var candidate = candidates.computeIfAbsent(value, ValueCandidate::new);
 			var source = new ValueSource(analyzer, confidenceScore, sourceDetails);
 			candidate.addSource(source);
 		};
@@ -157,7 +157,7 @@ public class JarAnalyzer {
 				MavenUidComponent.VERSION, new ArrayList<>()
 				);
 		
-		var newScoreComparator = Comparator.comparing((ValueCandidate candidate) -> candidate.scoreSum).reversed();
+		var newScoreComparator = Comparator.comparing(ValueCandidate::getScoreSum).reversed();
 		var sourceComparator = Comparator.comparing((ValueSource source) -> source.score).reversed();
 		
 		for (var uidComponent : MavenUidComponent.values()) {

@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -30,7 +29,8 @@ import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import de.eitco.mavenizer.analyze.Analyzer.JarHashes;
 
 public class Util {
-
+	private Util() {}
+	
 	public static final Path CURRENT_DIR = Paths.get(".");
 	
 	public static Optional<String> validateFileCanBeCreated(String pathString) {
@@ -51,7 +51,7 @@ public class Util {
 	 * Argument can contain files and folders, but only files are returned.
 	 */
 	public static List<Path> getFiles(List<String> filesOrDirs, Predicate<Path> fileFilter) {
-		List<Path> result = new ArrayList<Path>();
+		var result = new ArrayList<Path>();
 		for (var fileOrDirString : filesOrDirs) {
 			Path fileOrDirAsPath = Paths.get(fileOrDirString);
 			File fileOrDir = fileOrDirAsPath.toFile();
@@ -125,14 +125,14 @@ public class Util {
 		return System.getProperty("os.name").startsWith("Windows");
 	}
 	
-	public static <T> List<T> subList(List<T> original, int maxCount, Function<T,Boolean> filter) {
+	public static <T> List<T> subList(List<T> original, int maxCount, Predicate<T> filter) {
 		if (original.isEmpty()) {
 			return original;
 		}
 		var result = new ArrayList<T>(original.size());
 		int count = 0;
 		for (var item : original) {
-			if (filter == null || (filter != null && filter.apply(item))) {
+			if (filter == null || filter.test(item)) {
 				result.add(item);
 				count++;
 				if (count >= maxCount) {

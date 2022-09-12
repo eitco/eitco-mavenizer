@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
@@ -81,7 +81,7 @@ public class MavenRepoChecker {
 		}
 	}
 	
-	public static enum OnlineMatch {
+	public enum OnlineMatch {
 		FOUND_MATCH_EXACT_SHA,
 		FOUND_MATCH_EXACT_CLASSES_SHA,
 		FOUND_MATCH_SUPERSET_CLASSNAMES,
@@ -137,7 +137,6 @@ public class MavenRepoChecker {
 		resolverServiceLocator.addService(RepositoryConnectorFactory.class, BasicRepositoryConnectorFactory.class);
 		resolverServiceLocator.addService(TransporterFactory.class, FileTransporterFactory.class);
 		resolverServiceLocator.addService(TransporterFactory.class, HttpTransporterFactory.class);	
-//		resolverServiceLocator.addService(TransporterFactory.class, WagonTransporterFactory.class);
 		
 		repoSystem = new DefaultRepositorySystem();
 		repoSystem.initService(resolverServiceLocator);
@@ -187,7 +186,7 @@ public class MavenRepoChecker {
 	 *   Can contain UIDs where version is null, if given version's scores did no pass threshold check or if no versions were passed.
 	 */
 	public Map<MavenUid, Map<MavenUidComponent, Integer>> selectCandidatesToCheck(Map<MavenUidComponent, List<ValueCandidate>> candidatesMap) {
-		Function<ValueCandidate, Boolean> scoreCheck = candidate -> candidate.scoreSum >= ONLINE_SEARCH_THRESHOLD;
+		Predicate<ValueCandidate> scoreCheck = candidate -> candidate.getScoreSum() >= ONLINE_SEARCH_THRESHOLD;
 		
 		int maxCount = candidatesToCheckConfig.values().stream().reduce(1, (a, b) -> a * b);// multiply config values
 		var result = new LinkedHashMap<MavenUid, Map<MavenUidComponent, Integer>>(maxCount);// use linked to make sure highest score combinations are downloaded first
@@ -201,16 +200,16 @@ public class MavenRepoChecker {
 				var versions = Util.subList(candidatesMap.get(MavenUidComponent.VERSION), candidatesToCheckConfig.get(MavenUidComponent.VERSION), scoreCheck);
 				if (versions.isEmpty()) {
 					var scores = Map.of(
-							MavenUidComponent.GROUP_ID, group.scoreSum,
-							MavenUidComponent.ARTIFACT_ID, artifact.scoreSum);
+							MavenUidComponent.GROUP_ID, group.getScoreSum(),
+							MavenUidComponent.ARTIFACT_ID, artifact.getScoreSum());
 					
 					result.put(new MavenUid(group.value, artifact.value, null), scores);
 				} else {
 					for (var version : versions) {
 						var scores = Map.of(
-								MavenUidComponent.GROUP_ID, group.scoreSum,
-								MavenUidComponent.ARTIFACT_ID, artifact.scoreSum,
-								MavenUidComponent.VERSION, version.scoreSum);
+								MavenUidComponent.GROUP_ID, group.getScoreSum(),
+								MavenUidComponent.ARTIFACT_ID, artifact.getScoreSum(),
+								MavenUidComponent.VERSION, version.getScoreSum());
 						
 						result.put(new MavenUid(group.value, artifact.value, version.value), scores);
 					}
@@ -462,7 +461,7 @@ public class MavenRepoChecker {
 	}
 	
 	private Set<MavenUid> selectVersionCandidates(MavenUid uidWithoutVersion, List<String> versions) {
-		if (versions.size() == 0) {
+		if (versions.isEmpty()) {
 			throw new IllegalStateException();
 		}
 		if (versions.size() == 1) {

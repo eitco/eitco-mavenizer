@@ -15,8 +15,8 @@ import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class ClassTimestampAnalyzer {
 	
-	public final static DateTimeFormatter dateToVersion = DateTimeFormatter.ofPattern("yyyy.MM.dd");
-	public final static DateTimeFormatter datePrinter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+	public static final DateTimeFormatter dateToVersion = DateTimeFormatter.ofPattern("yyyy.MM.dd");
+	public static final DateTimeFormatter datePrinter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 	
 	public void analyze(ValueCandidateCollector result, List<JarEntry> classes) {
 		

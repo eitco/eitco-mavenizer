@@ -27,10 +27,10 @@ import de.eitco.mavenizer.Cli.ResettableCommand;
 
 public class Generator {
 
-	public static enum ScriptType {
+	public enum ScriptType {
 		POWERSHELL("ps1");
 		
-		public static Map<String, ScriptType> fileExtensions = Arrays.stream(ScriptType.values())
+		public static final Map<String, ScriptType> fileExtensions = Arrays.stream(ScriptType.values())
 				.collect(Collectors.toMap((type -> type.fileExtension), Function.identity()));
 
 		public final String fileExtension;
@@ -105,7 +105,10 @@ public class Generator {
 		public Optional<String> validateScriptFile() {
 			if (!noScript) {
 				for (var type : scriptTypes) {
-					return Util.validateFileCanBeCreated(pomFile + "." + type);
+					var error = Util.validateFileCanBeCreated(pomFile + "." + type);
+					if (error.isPresent()) {
+						return error;
+					}
 				}
 			}
 			return Optional.empty();
@@ -132,13 +135,12 @@ public class Generator {
 	public void runGenerator(Cli cli) {
 		
 		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
-			var errors = List.of(
+			return List.of(
 					args.validateMain(),
 					args.validateScriptTypes(),
 					args.validateScriptFile(),
 					args.validatePomFile()
 				);
-			return errors;
 		});
 		
 		LOG.info("Generator started with args: " + Arrays.toString(cli.getLastArgs()));
@@ -199,7 +201,7 @@ public class Generator {
 			for (var scriptType : args.scriptTypes) {
 				var type = ScriptType.fileExtensions.get(scriptType);
 				
-				String fileContent = "";
+				var fileContent = new StringBuilder();
 				if (type.equals(ScriptType.POWERSHELL)) {
 					
 					for (var jar : jarReports) {
@@ -207,16 +209,16 @@ public class Generator {
 							var jarPath = Paths.get(jar.dir).resolve(jar.filename);
 							var uid = jar.result;
 							
-							fileContent += args.scriptCommand;
-							fileContent += " -Dpackaging='jar'";
-							fileContent += " -Dfile='" + jarPath + "'";
-							fileContent += " -DgroupId='" + uid.groupId + "'";
-							fileContent += " -DartifactId='" + uid.artifactId + "'";
-							fileContent += " -Dversion='" + uid.version + "'";
+							fileContent.append(args.scriptCommand);
+							fileContent.append(" -Dpackaging='jar'");
+							fileContent.append(" -Dfile='" + jarPath + "'");
+							fileContent.append(" -DgroupId='" + uid.groupId + "'");
+							fileContent.append(" -DartifactId='" + uid.artifactId + "'");
+							fileContent.append(" -Dversion='" + uid.version + "'");
 							if (uid.classifier != null && !uid.classifier.isBlank()) {
-								fileContent += " -Dclassifier='" + uid.classifier + "'";
+								fileContent.append(" -Dclassifier='" + uid.classifier + "'");
 							}
-							fileContent += "\n";
+							fileContent.append("\n");
 						}
 					}
 				}
@@ -232,31 +234,31 @@ public class Generator {
 		}
 		
 		if (args.pom) {
-			String fileContent = "";
-			fileContent += "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"" + "\n";
-			fileContent += "	xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" + "\n";
-			fileContent += "	xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">" + "\n";
-			fileContent += "	<modelVersion>4.0.0</modelVersion>" + "\n";
-			fileContent += "	<groupId>???</groupId>" + "\n";
-			fileContent += "	<artifactId>???</artifactId>" + "\n";
-			fileContent += "	<version>0.0.1-SNAPSHOT</version>" + "\n";
-			fileContent += "" + "\n";
-			fileContent += "	<dependencies>" + "\n";
+			var fileContent = new StringBuilder();
+			fileContent.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\"" + "\n");
+			fileContent.append("	xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" + "\n");
+			fileContent.append("	xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">" + "\n");
+			fileContent.append("	<modelVersion>4.0.0</modelVersion>" + "\n");
+			fileContent.append("	<groupId>???</groupId>" + "\n");
+			fileContent.append("	<artifactId>???</artifactId>" + "\n");
+			fileContent.append("	<version>0.0.1-SNAPSHOT</version>" + "\n");
+			fileContent.append("" + "\n");
+			fileContent.append("	<dependencies>" + "\n");
 			
 			for (var jar : jarReports) {
 				var uid = jar.result;
-				fileContent += "		<dependency>" + "\n";
-				fileContent += "			<groupId>" + uid.groupId + "</groupId>" + "\n";
-				fileContent += "			<artifactId>" + uid.artifactId + "</artifactId>" + "\n";
-				fileContent += "			<version>" + uid.version + "</version>" + "\n";
+				fileContent.append("		<dependency>" + "\n");
+				fileContent.append("			<groupId>" + uid.groupId + "</groupId>" + "\n");
+				fileContent.append("			<artifactId>" + uid.artifactId + "</artifactId>" + "\n");
+				fileContent.append("			<version>" + uid.version + "</version>" + "\n");
 				if (uid.classifier != null && !uid.classifier.isBlank()) {
-					fileContent += "			<classifier>" + uid.classifier + "</classifier>" + "\n";
+					fileContent.append("			<classifier>" + uid.classifier + "</classifier>" + "\n");
 				}
-				fileContent += "		</dependency>" + "\n";
+				fileContent.append("		</dependency>" + "\n");
 			}
 			
-			fileContent += "	</dependencies>" + "\n";
-			fileContent += "</project>" + "\n";
+			fileContent.append("	</dependencies>" + "\n");
+			fileContent.append("</project>" + "\n");
 			
 			var path = Paths.get(args.pomFile);
 			cli.println("Generating POM: " + path.toAbsolutePath(), LOG::info);

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class MavenUid {
 	
-	public static enum MavenUidComponent {
+	public enum MavenUidComponent {
 		GROUP_ID("groupId"),
 		ARTIFACT_ID("artifactId"),
 		VERSION("version");
@@ -46,7 +46,7 @@ public class MavenUid {
 	@Override
 	public String toString() {
 		var versionString = version == null ? "<unknown-version>" : version;
-		var classifierString = classifier == "" ? "" : (" | classifier: " + classifier);
+		var classifierString = classifier.isEmpty() ? "" : (" | classifier: " + classifier);
 		return "( " + groupId + " | " + artifactId + " | " + versionString + classifierString + " )";
 	}
 	@Override

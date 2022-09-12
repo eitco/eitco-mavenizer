@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -122,12 +122,11 @@ public class Analyzer {
 	public void runAnalysis(Cli cli) {
 		
 		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
-			var errors = List.of(
+			return List.of(
 					args.validateJars(),
 					args.validateReportFile(),
 					args.validateStartNumber()
 				);
-			return errors;
 		});
 		
 		LOG.info("Analyzer started with args: " + Arrays.toString(cli.getLastArgs()));
@@ -223,7 +222,7 @@ public class Analyzer {
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
 			}
-	    };
+	    }
 	    
 		System.out.println();// end System.out.print with StringUtil.RETURN_LINE
 		
@@ -302,7 +301,7 @@ public class Analyzer {
 	 	    int skipped = total - jarReportFutures.size();
 	 	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
 	 	    
-	 	    if (jarReportFutures.size() >= 1) {
+	 	    if (!jarReportFutures.isEmpty()) {
 	 	    	// write report
 	 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
 	 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
@@ -338,22 +337,22 @@ public class Analyzer {
 		var checkResultsWithVersion = jarAnalysis.onlineCompletionWithVersion.join();
     	var checkResultsNoVersion = jarAnalysis.onlineCompletionNoVersion.join();
     	
-    	Function<UidCheck, Boolean> onlineMatchToSelect = uid -> uid.matchType.isConsideredIdentical();
+    	Predicate<UidCheck> onlineMatchToSelect = uid -> uid.matchType.isConsideredIdentical();
     	
     	var foundOnline = new ArrayList<UidCheck>(1);
     	for (var uid : checkResultsWithVersion) {
-    		if (onlineMatchToSelect.apply(uid)) {
+    		if (onlineMatchToSelect.test(uid)) {
     			foundOnline.add(uid);
     		}
     	}
     	for (var uids : checkResultsNoVersion.values()) {
     		for (var uid : uids) {
-        		if (onlineMatchToSelect.apply(uid)) {
+        		if (onlineMatchToSelect.test(uid)) {
         			foundOnline.add(uid);
         		}
     		}
     	}
-    	if (foundOnline.size() >= 1) {
+    	if (!foundOnline.isEmpty()) {
     		return Optional.of(foundOnline.get(0));
     	}
     	return Optional.empty();
@@ -391,7 +390,7 @@ public class Analyzer {
 			// collect all proposals
 			var proposals = new LinkedHashSet<String>();
 			for (var candidate : jarAnalysis.offlineResult.sortedValueCandidates.get(component)) {
-				if (candidate.scoreSum >= PROPOSE_CANDIDATE_THRESHOLD) {
+				if (candidate.getScoreSum() >= PROPOSE_CANDIDATE_THRESHOLD) {
 					proposals.add(candidate.value);
 				}
 			}

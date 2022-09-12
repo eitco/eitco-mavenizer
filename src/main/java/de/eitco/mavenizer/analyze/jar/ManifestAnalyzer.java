@@ -32,6 +32,10 @@ public class ManifestAnalyzer {
 		}
 	}
 	
+	public JarAnalyzerType getType() {
+		return JarAnalyzerType.MANIFEST;
+	}
+	
 	private void analyze(ValueCandidateCollector result, Set<Map.Entry<Attributes.Name, String>> attributes) {
 		for (var entry : attributes) {
 			String attrName = entry.getKey().toString();
@@ -95,12 +99,8 @@ public class ManifestAnalyzer {
 			}
 		}
 	}
-	
-	public JarAnalyzerType getType() {
-		return JarAnalyzerType.MANIFEST;
-	}
 
-	public static enum Attribute {
+	private enum Attribute {
 		Extension_Name,
 		Implementation_Title,
 		Implementation_Vendor_Id,
@@ -110,7 +110,7 @@ public class ManifestAnalyzer {
 		
 		public static final Set<String> stringValues = Arrays.stream(Attribute.values())
 				.map(Attribute::toString)
-				.collect(Collectors.toSet());
+				.collect(Collectors.toUnmodifiableSet());
 				
 		@Override
 		public String toString() {
@@ -121,7 +121,7 @@ public class ManifestAnalyzer {
 		}
 	}
 	
-	public static class ScoredValue {
+	private static class ScoredValue {
 		public final String value;
 		public final int confidence;
 		
@@ -132,11 +132,11 @@ public class ManifestAnalyzer {
 	}
 	
 	@FunctionalInterface
-	public static interface CandidatesExtractor {
+	private static interface CandidatesExtractor {
 		public List<ScoredValue> getCandidates(String attributeValue);
 	}
 
-	public static Map<Attribute, CandidatesExtractor> groupIdExtractors = Map.of(
+	private static Map<Attribute, CandidatesExtractor> groupIdExtractors = Map.of(
 			Attribute.Extension_Name,
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 4, 2),
 			Attribute.Implementation_Title,
@@ -151,7 +151,7 @@ public class ManifestAnalyzer {
 			attributeValue -> extractPattern_PackageWithOptionalClass(attributeValue, 2, 2)
 	);
 	
-	public static Map<Attribute, CandidatesExtractor> artifactIdExtractors = Map.of(
+	private static Map<Attribute, CandidatesExtractor> artifactIdExtractors = Map.of(
 			Attribute.Extension_Name,
 			attributeValue -> extractPattern_ArtifactIdOrPackageLeaf(attributeValue, 8, 2),
 			Attribute.Implementation_Title,
@@ -164,14 +164,14 @@ public class ManifestAnalyzer {
 			attributeValue -> extractPattern_PackageLeafOrArtifactLeaf(attributeValue, 2)
 	);
 	
-	public static String VERSION_ATTRIBUTE_SUFFIX = "-Version";
-	public static Set<String> VERSION_ATTRIBUTE_EXCLUDES = Set.of(
+	private static String VERSION_ATTRIBUTE_SUFFIX = "-Version";
+	private static Set<String> VERSION_ATTRIBUTE_EXCLUDES = Set.of(
 			"Ant-Version",
 			"Manifest-Version",
 			"Bundle-ManifestVersion",
 			"Archiver-Version"
 			);
-	public static Set<String> VERSION_ATTRIBUTE_LOW_CONFIDENCE = Set.of(
+	private static Set<String> VERSION_ATTRIBUTE_LOW_CONFIDENCE = Set.of(
 			"Specification-Version" // this attribute sometimes does not contain the minor version and is usually not the only version attribute anyway
 			);
 	

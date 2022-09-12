@@ -33,7 +33,7 @@ public class ClassFilepathAnalyzer {
 		}
 	}
 	
-	public class FolderNode {
+	private class FolderNode {
 		public final Path path;
 		public final String folderName;
 		public int classCount;
