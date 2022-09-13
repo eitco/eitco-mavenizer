@@ -164,7 +164,7 @@ public class ManifestAnalyzer {
 			attributeValue -> extractPattern_PackageLeafOrArtifactLeaf(attributeValue, 2)
 	);
 	
-	private static String VERSION_ATTRIBUTE_SUFFIX = "-Version";
+	private static String VERSION_ATTRIBUTE_SUFFIX = "Version";
 	private static Set<String> VERSION_ATTRIBUTE_EXCLUDES = Set.of(
 			"Ant-Version",
 			"Manifest-Version",

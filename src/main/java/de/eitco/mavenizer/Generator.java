@@ -126,6 +126,8 @@ public class Generator {
 	
 	private static final Logger LOG = LoggerFactory.getLogger(Generator.class);
 	
+	private static final boolean POM_VERSION_PROPS = true;
+	
 	private final GeneratorArgs args = new GeneratorArgs();
 	
 	public void addCommand(Cli cli) {
@@ -243,21 +245,35 @@ public class Generator {
 			fileContent.append("	<artifactId>???</artifactId>" + "\n");
 			fileContent.append("	<version>0.0.1-SNAPSHOT</version>" + "\n");
 			fileContent.append("" + "\n");
-			fileContent.append("	<dependencies>" + "\n");
 			
+			if (POM_VERSION_PROPS) {
+				fileContent.append("	<properties>" + "\n");
+				for (var jar : jarReports) {
+					var uid = jar.result;
+					fileContent.append("		<version." + uid.artifactId + ">" + uid.version + "</version." + uid.artifactId +">" + "\n");
+				}
+				fileContent.append("	</properties>" + "\n");
+				fileContent.append("" + "\n");
+			}
+			
+			fileContent.append("	<dependencies>" + "\n");
 			for (var jar : jarReports) {
 				var uid = jar.result;
 				fileContent.append("		<dependency>" + "\n");
 				fileContent.append("			<groupId>" + uid.groupId + "</groupId>" + "\n");
 				fileContent.append("			<artifactId>" + uid.artifactId + "</artifactId>" + "\n");
-				fileContent.append("			<version>" + uid.version + "</version>" + "\n");
+				if (POM_VERSION_PROPS) {
+					fileContent.append("			<version>${version." + uid.artifactId + "}</version>" + "\n");
+				} else {
+					fileContent.append("			<version>" + uid.version + "</version>" + "\n");
+				}
 				if (uid.classifier != null && !uid.classifier.isBlank()) {
 					fileContent.append("			<classifier>" + uid.classifier + "</classifier>" + "\n");
 				}
 				fileContent.append("		</dependency>" + "\n");
 			}
-			
 			fileContent.append("	</dependencies>" + "\n");
+			
 			fileContent.append("</project>" + "\n");
 			
 			var path = Paths.get(args.pomFile);
