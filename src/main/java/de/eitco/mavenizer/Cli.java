@@ -23,7 +23,7 @@ public class Cli {
 		public void setDefaults();
 	}
 	
-	public static class DefaultArgs implements Cli.ResettableCommand {
+	public static class DefaultArgs implements ResettableCommand {
 		@Parameter(names = { "-help", "--help", "-h" }, help = true)
 	    public boolean help;
 		

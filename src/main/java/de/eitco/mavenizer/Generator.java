@@ -62,6 +62,10 @@ public class Generator {
 		
 		@Parameter(order = 60, names = "-pomFile", description = "Only if -pom is enabled: Name of pom output file.")
 		String pomFile;
+		
+		public GeneratorArgs() {
+			setDefaults();
+		}
 
 		@Override
 		public void setDefaults() {

@@ -51,16 +51,20 @@ generate      Generate install script or pom.xml from report file created by ana
     Options:
       -scriptCommand, -c
         Command executed for each jar. Additional arguments can be included.
+        Default: mvn install:install-file
       -noScript
         Disable install script generation.
         Default: false
       -scriptType
         Which script language(s) to generate. Currently supports only 'ps1' (powershell).
+        Default: [ps1]
       -scriptFile
         Name of install script output file (without file extension).
+        Default: eitco-mavenizer-install
       -pom
         Enable generation of pom.xml with dependencies from report.
         Default: false
       -pomFile
         Only if -pom is enabled: Name of pom output file.
+        Default: eitco-mavenizer-pom.xml
 ```
