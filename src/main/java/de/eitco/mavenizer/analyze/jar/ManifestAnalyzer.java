@@ -39,10 +39,14 @@ public class ManifestAnalyzer {
 	private void analyze(ValueCandidateCollector result, Set<Map.Entry<Attributes.Name, String>> attributes) {
 		for (var entry : attributes) {
 			String attrName = entry.getKey().toString();
+			String attrValue = entry.getValue();
+			if (attrValue.length() > 200) {
+				continue;
+			}
+			attrValue = attrValue.trim();
 			
 			if (attrName.endsWith(VERSION_ATTRIBUTE_SUFFIX) && !VERSION_ATTRIBUTE_EXCLUDES.contains(attrName)) {
 				var uidComponent = MavenUidComponent.VERSION;
-				var attrValue = entry.getValue().trim();
 				
 				Matcher matcher = Helper.Regex.versionWidthOptionalClassifiers.matcher(attrValue);
 				if (matcher.find()) {
@@ -71,7 +75,6 @@ public class ManifestAnalyzer {
 			} else if (Attribute.stringValues.contains(attrName)) {
 				
 				var attr = Attribute.fromString(attrName);
-				var attrValue = entry.getValue().trim();
 				var attrSource = attr.toString() + ": '" + attrValue + "'";
 				
 				for (var uidComponent : List.of(MavenUidComponent.GROUP_ID, MavenUidComponent.ARTIFACT_ID)) {

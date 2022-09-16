@@ -169,7 +169,7 @@ public class MavenRepoChecker {
 			}
 			onSettingsFileWritten = CompletableFuture.<Void>completedFuture(null);
 			onRemoteReposConfigured = CompletableFuture.<Void>completedFuture(null);
-			onOnlineAccessChecked = CompletableFuture.<Void>completedFuture(null);// we cannot test downloading a jar since we don't know what the repos contain
+			onOnlineAccessChecked = onLocalRepoDeleted;// we cannot test downloading a jar since we don't know what the repos contain
 		} else {
 			// read settings
 			onSettingsFileWritten = writeEffectiveSettingsToFile(TEMP_SETTINGS_FILE);
