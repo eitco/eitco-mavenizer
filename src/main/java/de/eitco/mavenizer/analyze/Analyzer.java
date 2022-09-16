@@ -38,6 +38,7 @@ import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.JarAnalyzer.ManifestFile;
+import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
 import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
 
@@ -136,7 +137,7 @@ public class Analyzer {
 		}
 		
 		if (!args.offline) {
-			repoChecker = new MavenRepoChecker();
+			repoChecker = new MavenRepoChecker(Optional.ofNullable(args.remoteRepos));
 		} else {
 			cli.println("ONLINE ANALYSIS DISABLED! - Analyzer will not be able to auto-select values for matching jars found online!", LOG::info);
 			cli.askUserToContinue("");
@@ -230,6 +231,8 @@ public class Analyzer {
 	    System.out.println("Online-Check initializing...");
 	    
 	    var count = 1;
+	    
+	    // TODO entirely remove use of futures here
 	    var jarReportFutures = new ArrayList<CompletableFuture<JarReport>>(waiting.size());
 	    
 	    boolean userExit = false;
@@ -256,7 +259,6 @@ public class Analyzer {
 	    	
 	    	var autoSelected = autoSelectCandidate(jarAnalysis);
 	    	Optional<JarReport> selected = autoSelected.map(uid -> new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, true, uid.fullUid));
-	    	CompletableFuture<JarReport> selectedToBeChecked = null;
 	    	
 	    	System.out.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
 	    	printer.printResults(jarAnalysis, autoSelected, args.forceDetailedOutput, args.offline);
@@ -271,25 +273,38 @@ public class Analyzer {
 		    		var userSelectedUid = userResult.selected;
 		    		if (userSelectedUid.isPresent()) {
 		    			
-		    			// we check again to see if user has provided a UID of a jar that is available online and identical, using local remote cache if possible
+		    			// We check again to see if user has provided a UID of a jar that is available online and identical, using cache if possible.
 		    			if (!args.offline) {
-		    				var checkedSet = repoChecker.check(jar.hashes, Set.of(userSelectedUid.get()), true);
-		    				selectedToBeChecked = checkedSet.thenApply(set -> {
-		    					var uidCheck = set.iterator().next();
-		    					var foundOnRemote = uidCheck.matchType.isConsideredIdentical();
-		    					return new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get());
-		    				});
+		    				var checkedSet = repoChecker.checkOnline(jar.hashes, Set.of(userSelectedUid.get()));
+		    				// We do not make use of asynchronous downloading here because we want to notify user:
+		    				// - if the UID he selected could be found online
+		    				// - if the UID he selected might conflict with a non-identical online jar
+		    				var uidCheck = checkedSet.join().iterator().next();
+		    				var foundOnRemote = uidCheck.matchType.isConsideredIdentical();
+		    				if (foundOnRemote) {
+		    					System.out.println();
+		    					System.out.println("  Found identical JAR online!");
+		    				} else if (uidCheck.matchType.equals(OnlineMatch.FOUND_NO_MATCH)) {
+		    					System.out.println();
+		    					System.out.println("  WARNING!!!");
+		    					cli.println("  Found non-identical JAR with same UID online!", LOG::warn);
+		    					cli.println("  Nevertheless the JAR's 'foundOnRemote' flag will be set to `true` to prevent it from being installed/deployed!", LOG::warn);
+		    					if (uidCheck.url.isPresent()) {
+			    					cli.println("  " + uidCheck.url.get(), LOG::warn);
+		    					}
+		    				}
+	    					selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get()));
+		    				
 		    			} else {
 		    				selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, false, userSelectedUid.get()));
 		    			}
 		    			
 		    		}
+		    		cli.askUserToContinue("  ");
 	    		}
 	    	}
 	    	if (selected.isPresent()) {
 	    		jarReportFutures.add(CompletableFuture.completedFuture(selected.get()));
-	    	} else if (selectedToBeChecked != null) {
-	    		jarReportFutures.add(selectedToBeChecked);
 	    	}
 	    	
 	    	printer.printJarEndSeparator();
@@ -481,7 +496,6 @@ public class Analyzer {
 			System.out.println(pad + "Note that any mistakes can be fixed manually in the report file.");
 			result = Optional.of(selectedUid);
 		}
-		cli.askUserToContinue(pad);
 		
 		return new UserSelectionResult(result, exit);
 	}

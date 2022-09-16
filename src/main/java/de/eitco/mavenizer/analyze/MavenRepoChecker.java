@@ -95,12 +95,14 @@ public class MavenRepoChecker {
 	}
 	
 	private static class OnlineJarResult {
-		Optional<String> url;
-		File downloaded;
+		String url;
+		//File downloaded;
+		JarHashes hashes;
 		
-		public OnlineJarResult(Optional<String> url, File downloaded) {
+		public OnlineJarResult(String url, File downloaded, JarHashes hashes) {
 			this.url = url;
-			this.downloaded = downloaded;
+			//this.downloaded = downloaded;
+			this.hashes = hashes;
 		}
 	}
 	
@@ -126,10 +128,10 @@ public class MavenRepoChecker {
 	private final CompletableFuture<?> onRemoteReposConfigured;
 	private final CompletableFuture<?> onOnlineAccessChecked;
 	
-	private final Map<MavenUid, CompletableFuture<UidCheck>> uidCheckCache = new ConcurrentHashMap<>();
+	private final Map<MavenUid, CompletableFuture<Optional<OnlineJarResult>>> onlineJarCache = new ConcurrentHashMap<>();
 	
 	
-	public MavenRepoChecker() {
+	public MavenRepoChecker(Optional<List<String>> customRemoteRepos) {
 		isWindows = Util.isWindows();
 		
 		resolverServiceLocator = MavenRepositorySystemUtils.newServiceLocator();
@@ -159,15 +161,26 @@ public class MavenRepoChecker {
 		      }
 		 });
 		
-		// read settings
-		onSettingsFileWritten = writeEffectiveSettingsToFile(TEMP_SETTINGS_FILE);
-		onRemoteReposConfigured = onSettingsFileWritten.thenAcceptAsync(__ -> {
-			readRepoSettings(TEMP_SETTINGS_FILE);
-		});
-		
-		// test online access
-		var readyForDownloads = CompletableFuture.allOf(onLocalRepoDeleted, onRemoteReposConfigured);
-		onOnlineAccessChecked = readyForDownloads.thenComposeAsync(__ -> assertOnlineReposReachable());
+		if (!customRemoteRepos.isEmpty()) {
+			int counter = 1;
+			for (String url : customRemoteRepos.get()) {
+				remoteRepos.add(new RemoteRepository.Builder("customRemote" + counter, "default", url).build());
+				counter++;
+			}
+			onSettingsFileWritten = CompletableFuture.<Void>completedFuture(null);
+			onRemoteReposConfigured = CompletableFuture.<Void>completedFuture(null);
+			onOnlineAccessChecked = CompletableFuture.<Void>completedFuture(null);// we cannot test downloading a jar since we don't know what the repos contain
+		} else {
+			// read settings
+			onSettingsFileWritten = writeEffectiveSettingsToFile(TEMP_SETTINGS_FILE);
+			onRemoteReposConfigured = onSettingsFileWritten.thenAcceptAsync(__ -> {
+				readRepoSettings(TEMP_SETTINGS_FILE);
+			});
+			
+			// test online access
+			var readyForDownloads = CompletableFuture.allOf(onLocalRepoDeleted, onRemoteReposConfigured);
+			onOnlineAccessChecked = readyForDownloads.thenComposeAsync(__ -> assertOnlineReposReachable());
+		}
 	}
 	
 	public CompletableFuture<?> fullyInitialized() {
@@ -221,42 +234,39 @@ public class MavenRepoChecker {
 	}
 	
 	public CompletableFuture<Set<UidCheck>> checkOnline(JarHashes localHashes, Set<MavenUid> uidCandidates) {
-		return check(localHashes, uidCandidates, false);
-	}
-	
-	public CompletableFuture<Set<UidCheck>> check(JarHashes localHashes, Set<MavenUid> uidCandidates, boolean expectLocalRemoteAsSource) {
 		return CompletableFuture.supplyAsync(() -> {
 			
 			Set<UidCheck> results = new LinkedHashSet<>();
 			for (var uid : uidCandidates) {
-				CompletableFuture<UidCheck> checkedFuture;
+				CompletableFuture<Optional<OnlineJarResult>> onlineJarFuture;
 				
-				// Use cache to make sure we don't send requests twice for the same uid (which would just result in finding the jar in local repo).
-				// If we did not cache the future itself, we would be required to cache the remote URLs due to local jars not knowing where they came from.
-				synchronized (uidCheckCache) {
-					checkedFuture =  uidCheckCache.get(uid);
-					if (checkedFuture == null) {
-						checkedFuture = fullyInitialized().thenApplyAsync(__ -> {
-							
-							var jarResult = downloadJar(uid, false, expectLocalRemoteAsSource);
-							if (jarResult.isPresent()) {
-								var onlineHashes = Util.sha256(jarResult.get().downloaded);
-								if (localHashes.jarSha256.equals(onlineHashes.jarSha256)) {
-									return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_SHA, jarResult.get().url);
-								} else {
-									if (classHashesMatch(localHashes, onlineHashes)) {
-										return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA, jarResult.get().url);
-									}
-									return new UidCheck(uid, OnlineMatch.FOUND_NO_MATCH, Optional.empty());
-								}
-							} else {
-								return new UidCheck(uid, OnlineMatch.NOT_FOUND, Optional.empty());
-							}
-							
+				// Use cache to make sure we don't send requests twice for the same jar (which would just result in finding the jar in local repo).
+				synchronized (onlineJarCache) {
+					onlineJarFuture = onlineJarCache.get(uid);
+					if (onlineJarFuture == null) {
+						onlineJarFuture = fullyInitialized().thenApplyAsync(__ -> {
+							return downloadJar(uid, false);
 						});
-						uidCheckCache.put(uid, checkedFuture);
+
+						onlineJarCache.put(uid, onlineJarFuture);
 					}
 				}
+				
+				CompletableFuture<UidCheck> checkedFuture = onlineJarFuture.thenApplyAsync(onlineJarResult -> {
+					if (onlineJarResult.isPresent()) {
+						OnlineJarResult onlineJar = onlineJarResult.get();
+						var url = Optional.of(onlineJar.url);
+						if (localHashes.jarSha256.equals(onlineJar.hashes.jarSha256)) {
+							return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_SHA, url);
+						} else if (classHashesMatch(localHashes, onlineJar.hashes)) {
+							return new UidCheck(uid, OnlineMatch.FOUND_MATCH_EXACT_CLASSES_SHA, url);
+						} else {
+							return new UidCheck(uid, OnlineMatch.FOUND_NO_MATCH, url);
+						}
+					} else {
+						return new UidCheck(uid, OnlineMatch.NOT_FOUND, Optional.empty());
+					}
+				});
 				
 				// we serialize the checks for each call with join here to prevent unnecessary downloads, but multiple calls to this function can still run in parallel
 				var check = checkedFuture.join();
@@ -297,7 +307,7 @@ public class MavenRepoChecker {
 	}
 	
 	public void shutdown() {
-		uidCheckCache.clear();
+		onlineJarCache.clear();
 		Util.run(() -> {
 			onRemoteReposConfigured.cancel(true);
 			onSettingsFileWritten.get(5, TimeUnit.SECONDS);
@@ -329,12 +339,14 @@ public class MavenRepoChecker {
 		});
 	}
 	
-	private CompletableFuture<UidCheck> assertOnlineReposReachable() {
+	private CompletableFuture<?> assertOnlineReposReachable() {
+		// TODO we should make a simple HTTP request against each remote URL to make sure they are available.
+		// Downloading a known jar should only be done if we know maven central is one of the repos.
 		var testCheck = CompletableFuture.supplyAsync(() -> {
 			try {
-				var checkResult = downloadJar(onlineRepoTestJar, true, false);// throwOnFail guarantees that jar could be downloaded
+				var testJarResult = downloadJar(onlineRepoTestJar, true);// throwOnFail guarantees that jar could be downloaded
 				LOG.info("Online repositories are reachable!");
-				return new UidCheck(onlineRepoTestJar, OnlineMatch.FOUND_MATCH_EXACT_SHA, checkResult.get().url);
+				return testJarResult;
 			} catch (Exception e) {
 				if (e.getClass().equals(RuntimeException.class) || e.getClass().equals(UncheckedIOException.class)) {
 					e = (Exception) e.getCause();
@@ -344,7 +356,7 @@ public class MavenRepoChecker {
 				return null;
 			}
 		});
-		uidCheckCache.put(onlineRepoTestJar, testCheck);
+		onlineJarCache.put(onlineRepoTestJar, testCheck);
 		return testCheck;
 	}
 	
@@ -395,8 +407,7 @@ public class MavenRepoChecker {
 		} 
 	}
 	
-	private Optional<OnlineJarResult> downloadJar(MavenUid uid, boolean throwOnFail, boolean expectLocalRemoteAsSource) {
-		
+	private Optional<OnlineJarResult> downloadJar(MavenUid uid, boolean throwOnFail) {
 		var artifact = new DefaultArtifact(uid.groupId, uid.artifactId, "jar", uid.version);
 		var request = new ArtifactRequest(artifact, remoteRepos, null);
 	    ArtifactResult response;
@@ -405,20 +416,17 @@ public class MavenRepoChecker {
 			if (response.isResolved()) {
 				LOG.debug("Sucess! Jar found for " + uid + " in repo: " + response.getRepository());
 				try {
-					String url = "";
-					if (expectLocalRemoteAsSource) {
-						url = null;// if local repo can be used, caller does not get an url since it would be unreliable anyway
+					String url;
+					var repo = response.getRepository();
+					if (repo instanceof RemoteRepository) {
+						var remote = (RemoteRepository) response.getRepository();
+						var layout = repoLayoutProvider.newRepositoryLayout(repoSystemSession, remote);
+						url = remote.getUrl() + layout.getLocation(artifact, false).toString();
 					} else {
-						var repo = response.getRepository();
-						if (repo instanceof RemoteRepository) {
-							var remote = (RemoteRepository) response.getRepository();
-							var layout = repoLayoutProvider.newRepositoryLayout(repoSystemSession, remote);
-							url = remote.getUrl() + layout.getLocation(artifact, false).toString();
-						} else {
-							throw new IllegalStateException("Jar '" + uid + "' was retrieved from local reporitory, but lookup should have been cached instead! Cannot return remote URL.");
-						}
+						throw new IllegalStateException("Jar '" + uid + "' was retrieved from local reporitory, but lookup should have been cached instead! Cannot return remote URL.");
 					}
-					return Optional.of(new OnlineJarResult(Optional.ofNullable(url), response.getArtifact().getFile()));
+					var file = response.getArtifact().getFile();
+					return Optional.of(new OnlineJarResult(url, file, Util.sha256(file)));
 				} catch (NoRepositoryLayoutException e) {
 					throw new RuntimeException();
 				}

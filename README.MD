@@ -24,41 +24,43 @@ Optionally generate a pom containing the artifacts from the report (requires loc
 
 analyze      Analyze jars interactively to generate report with maven uid for each jar.
   Usage: analyze [options] <path(s) to jar file(s) or parent folder(s)>
-	Options:
-	  -interactive, -i
-		Enable interactive mode to complete missing maven UID information for jars from unknown origin. If disabled, only jars are added to final report that could be found in a maven remote repository.
-		Default: false
-	  -reportFile
-		Only if -interactive is enabled: File path and name were result report should be created.
-		Default: ./eitco-mavenizer-report-<datetime>.json
-	  -forceDetailedOutput
-		Show full analysis results even when jar was found online.
-		Default: false
-	  -offline
-		Disable attempts to find identical jars in remote repositories.
-		Default: false
-	  -limit
-		If set to a positive number, only that many jars will be analyzed.
-		Default: -1
-	  -start
-		If set to a positive number, jars are skipped until jar with given number is reached.
-		Default: 1
+    Options:
+      -interactive, -i
+        Enable interactive mode to complete missing maven UID information for jars from unknown origin. If disabled, only jars are added to final report that could be found in a maven remote repository.
+        Default: false
+      -remoteRepos
+        Comma-separated list of remote maven repositories that are used to find identical jars. If not specified, repositories found in user's settings.xml's default profile are used. If specified, settings.xml will be ignored.
+      -reportFile
+        Only if -interactive is enabled: File path and name were result report should be created.
+        Default: ./eitco-mavenizer-report-<datetime>.json
+      -forceDetailedOutput
+        Show full analysis results even when jar was found online.
+        Default: false
+      -offline
+        Disable attempts to find identical jars in remote repositories.
+        Default: false
+      -limit
+        If set to a positive number, only that many jars will be analyzed.
+        Default: -1
+      -start
+        If set to a positive number, jars are skipped until jar with given number is reached.
+        Default: 1
 
 generate      Generate install script or pom.xml from report file created by analyzer.
   Usage: generate [options] <path(s) to report file(s) or parent folder(s)>
-	Options:
-	  -scriptCommand, -c
-		Command executed for each jar. Additional arguments can be included.
-	  -noScript
-		Disable install script generation.
-		Default: false
-	  -scriptType
-		Which script language(s) to generate. Currently supports only 'ps1' (powershell).
-	  -scriptFile
-		Name of install script output file (without file extension).
-	  -pom
-		Enable generation of pom.xml with dependencies from report.
-		Default: false
-	  -pomFile
-		Only if -pom is enabled: Name of pom output file.
+    Options:
+      -scriptCommand, -c
+        Command executed for each jar. Additional arguments can be included.
+      -noScript
+        Disable install script generation.
+        Default: false
+      -scriptType
+        Which script language(s) to generate. Currently supports only 'ps1' (powershell).
+      -scriptFile
+        Name of install script output file (without file extension).
+      -pom
+        Enable generation of pom.xml with dependencies from report.
+        Default: false
+      -pomFile
+        Only if -pom is enabled: Name of pom output file.
 ```
