@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.eitco.mavenizer.analyze.Analyzer;
+import de.eitco.mavenizer.generate.Generator;
 
 public class Main {
 

@@ -10,8 +10,8 @@ import de.eitco.mavenizer.MavenUid;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.analyze.Analyzer.JarAnalysisWaitingForCompletion;
-import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
-import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.analyze.OnlineAnalyzer.OnlineMatch;
+import de.eitco.mavenizer.analyze.OnlineAnalyzer.UidCheck;
 
 public class ConsolePrinter {
 	

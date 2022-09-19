@@ -38,8 +38,8 @@ import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
 import de.eitco.mavenizer.analyze.JarAnalyzer.ManifestFile;
-import de.eitco.mavenizer.analyze.MavenRepoChecker.OnlineMatch;
-import de.eitco.mavenizer.analyze.MavenRepoChecker.UidCheck;
+import de.eitco.mavenizer.analyze.OnlineAnalyzer.OnlineMatch;
+import de.eitco.mavenizer.analyze.OnlineAnalyzer.UidCheck;
 import de.eitco.mavenizer.analyze.jar.Helper.Regex;
 
 public class Analyzer {
@@ -114,7 +114,7 @@ public class Analyzer {
 	private final JarAnalyzer jarAnalyzer = new JarAnalyzer();
 	private final ConsolePrinter printer = new ConsolePrinter();
 	
-	private MavenRepoChecker repoChecker = null;
+	private OnlineAnalyzer online = null;
 	
 	public void addCommand(Cli cli) {
 		cli.addCommand(COMMAND_NAME, args);
@@ -137,7 +137,7 @@ public class Analyzer {
 		}
 		
 		if (!args.offline) {
-			repoChecker = new MavenRepoChecker(Optional.ofNullable(args.remoteRepos));
+			online = new OnlineAnalyzer(Optional.ofNullable(args.remoteRepos));
 		} else {
 			cli.println("ONLINE ANALYSIS DISABLED! - Analyzer will not be able to auto-select values for matching jars found online!", LOG::info);
 			cli.askUserToContinue("");
@@ -182,7 +182,7 @@ public class Analyzer {
 				var sorted = jarAnalysisResult.sortedValueCandidates;
 				
 				if (!args.offline) {
-					var toCheck = repoChecker.selectCandidatesToCheck(sorted);
+					var toCheck = online.selectCandidatesToCheck(sorted);
 					
 					int highestVersionScore = toCheck.entrySet().stream()
 							.filter(entry -> entry.getKey().version != null)
@@ -208,8 +208,8 @@ public class Analyzer {
 							.map(uid -> new MavenUid(uid.groupId, uid.artifactId, null))// null out version
 							.collect(Collectors.toSet());
 					
-					var checkResultsWithVersion = repoChecker.checkOnline(jarHashes, toCheckWithVersion);
-					var checkResultsNoVersion = repoChecker.searchVersionsAndcheckOnline(jarHashes, toCheckNoVersion);
+					var checkResultsWithVersion = online.findJars(jarHashes, toCheckWithVersion);
+					var checkResultsNoVersion = online.searchVersionsAndFindJars(jarHashes, toCheckNoVersion);
 					
 					waiting.add(new JarAnalysisWaitingForCompletion(jar, jarAnalysisResult, checkResultsWithVersion, checkResultsNoVersion));
 				} else {
@@ -275,7 +275,7 @@ public class Analyzer {
 		    			
 		    			// We check again to see if user has provided a UID of a jar that is available online and identical, using cache if possible.
 		    			if (!args.offline) {
-		    				var checkedSet = repoChecker.checkOnline(jar.hashes, Set.of(userSelectedUid.get()));
+		    				var checkedSet = online.findJars(jar.hashes, Set.of(userSelectedUid.get()));
 		    				// We do not make use of asynchronous downloading here because we want to notify user:
 		    				// - if the UID he selected could be found online
 		    				// - if the UID he selected might conflict with a non-identical online jar
@@ -323,7 +323,7 @@ public class Analyzer {
 	 			
 	 			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
 	 		    
-	 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? repoChecker.getRemoteRepos() : List.of());
+	 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? online.getRemoteRepos() : List.of());
 	 		    var jarReports = jarReportFutures.stream()
 	 		    		.map(CompletableFuture::join)
 	 		    		.collect(Collectors.toList());
@@ -344,7 +344,7 @@ public class Analyzer {
 		
     	if (!args.offline) {
     		cli.println("Online-Check cleanup started.", LOG::info);
-    		repoChecker.shutdown();
+    		online.shutdown();
     	}
 	}
 	
