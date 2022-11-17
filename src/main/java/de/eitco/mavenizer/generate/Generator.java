@@ -42,6 +42,8 @@ public class Generator {
 	
 	private static final boolean POM_VERSION_PROPS = true;
 	
+	private static final String POWERSHELL_EXIT_ON_MVN_ERROR_COMMAND = "if (-not $?) {exit 1}";
+	
 	private final GeneratorArgs args = new GeneratorArgs();
 	
 	public void addCommand(Cli cli) {
@@ -134,6 +136,8 @@ public class Generator {
 							if (uid.classifier != null && !uid.classifier.isBlank()) {
 								fileContent.append(" -Dclassifier='" + uid.classifier + "'");
 							}
+							fileContent.append("; ");
+							fileContent.append(POWERSHELL_EXIT_ON_MVN_ERROR_COMMAND);
 							fileContent.append("\n");
 						}
 					}
