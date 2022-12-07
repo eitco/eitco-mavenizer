@@ -23,14 +23,14 @@ public class Helper {
 		public static final String PATTERN_CLASS = "[A-Z]\\w*";
 		public static final String PATTERN_SUBPACKAGE = "[a-z_][a-z0-9_]*";
 		public static final String PATTERN_ARTIFACT_ID_STRICT = "[a-z_][a-z0-9_\\-]*";
-		public static final String PATTERN_ARTIFACT_ID_LIKE = "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*";// sadly, log4j-1.2-api is a real artifactId, so we want to include period, and allow uppercase letters
+		public static final String PATTERN_ARTIFACT_ID_LIKE = "[a-zA-Z_][a-zA-Z0-9_\\-\\.]*";// sadly log4j-1.2-api is a real artifactId so we want to include period, allow uppercase letters
 		public static final String PATTERN_PACKAGE = "(" + PATTERN_SUBPACKAGE + "\\.)*(" + PATTERN_SUBPACKAGE + ")";
 		public static final String PATTERN_GROUP_ID_LIKE = "(" + PATTERN_PACKAGE + ")|([a-z_][a-z0-9_\\-]*)";// can be a package, but sadly could be something like "xml-apis"
 		public static final String PATTERN_PACKAGE_2_OR_MORE = "(" + PATTERN_SUBPACKAGE + "\\.)+(" + PATTERN_SUBPACKAGE + ")";
-		public static final String PATTERN_CLASSIFIER = "(([0-9]+)|([a-zA-Z]+))";
+		public static final String PATTERN_CLASSIFIER = "([a-zA-Z0-9]+)";
 		
 		public static final String PATTERN_VERSION = "[0-9]+(\\.[0-9]+)*((\\.[A-Z]+)|(\\-[A-Z]+))?";// yes, "3.1.SONATYPE" is a version used in reality
-		public static final String PATTERN_CLASSIFIERS = "(" + PATTERN_CLASSIFIER + ")(\\-" + PATTERN_CLASSIFIER + ")?";// more than 2 classifiers is unrealistic
+		public static final String PATTERN_CLASSIFIERS = "(" + PATTERN_CLASSIFIER + ")([\\-\\.]" + PATTERN_CLASSIFIER + "){0,2}";// "2.4.0-b180830.0438" and "2.1.4-hudson-build-463" are also real versions
 		
 		// specific patterns to test values with, using capture groups to extract substrings
 		public static final String PACKAGE_WITH_OPTIONAL_CLASS =
