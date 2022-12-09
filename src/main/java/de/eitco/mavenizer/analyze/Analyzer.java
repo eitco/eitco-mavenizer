@@ -235,8 +235,6 @@ public class Analyzer {
 	    // TODO entirely remove use of futures here
 	    var jarReportFutures = new ArrayList<CompletableFuture<JarReport>>(waiting.size());
 	    
-	    boolean userExit = false;
-	    
 	    // then wait for each jar to finish online analysis to complete analysis
 	    for (var jarAnalysis : waiting) {
 	    	var jar = jarAnalysis.jar;
@@ -267,7 +265,6 @@ public class Analyzer {
 	    		if (args.interactive) {
 	    			var userResult = userSelectCandidate(cli, jarAnalysis);
 	    			if (userResult.wantsToExit) {
-	    				userExit = true;
 	    				break;
 	    			}
 		    		var userSelectedUid = userResult.selected;
@@ -311,36 +308,32 @@ public class Analyzer {
 	    	count++;
 	    }
 	    
-	    if (!userExit) {
-	    	int total = waiting.size();
-	 	    int skipped = total - jarReportFutures.size();
-	 	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
-	 	    
-	 	    if (!jarReportFutures.isEmpty()) {
-	 	    	// write report
-	 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
-	 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
-	 			
-	 			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
-	 		    
-	 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? online.getRemoteRepos() : List.of());
-	 		    var jarReports = jarReportFutures.stream()
-	 		    		.map(CompletableFuture::join)
-	 		    		.collect(Collectors.toList());
-	 		    var report = new AnalysisReport(generalInfo, jarReports);
-	 		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
-	 		    
-	 	    	try {
-	 	    		jsonWriter.writeValue(reportFile.toFile(), report);
-	 			} catch (IOException e) {
-	 				throw new UncheckedIOException(e);
-	 			}
-	 	    } else {
-	 	    	cli.println("Skipping report file because no jars were resolved.", LOG::info);
-	 	    }
-	    } else {
-	    	cli.println("Skipping report file because user exited.", LOG::info);
-	    }
+    	int total = waiting.size();
+ 	    int skipped = total - jarReportFutures.size();
+ 	    cli.println("Analysis complete (" + skipped + "/" + total + " excluded from report).", LOG::info);
+ 	    
+ 	    if (!jarReportFutures.isEmpty()) {
+ 	    	// write report
+ 		    String dateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+ 			var reportFile = Paths.get(args.reportFile.replace(AnalysisArgs.DATETIME_SUBSTITUTE, dateTime));
+ 			
+ 			cli.println("Writing report file: " + reportFile.toAbsolutePath(), LOG::info);
+ 		    
+ 		    var generalInfo = new AnalysisInfo(!args.offline, !args.offline ? online.getRemoteRepos() : List.of());
+ 		    var jarReports = jarReportFutures.stream()
+ 		    		.map(CompletableFuture::join)
+ 		    		.collect(Collectors.toList());
+ 		    var report = new AnalysisReport(generalInfo, jarReports);
+ 		    var jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+ 		    
+ 	    	try {
+ 	    		jsonWriter.writeValue(reportFile.toFile(), report);
+ 			} catch (IOException e) {
+ 				throw new UncheckedIOException(e);
+ 			}
+ 	    } else {
+ 	    	cli.println("Skipping report file because no jars were resolved.", LOG::info);
+ 	    }
 		
     	if (!args.offline) {
     		cli.println("Online-Check cleanup started.", LOG::info);
