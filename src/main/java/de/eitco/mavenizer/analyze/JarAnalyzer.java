@@ -32,6 +32,7 @@ import de.eitco.mavenizer.analyze.jar.ClassTimestampAnalyzer;
 import de.eitco.mavenizer.analyze.jar.JarFilenameAnalyzer;
 import de.eitco.mavenizer.analyze.jar.ManifestAnalyzer;
 import de.eitco.mavenizer.analyze.jar.PomAnalyzer;
+import de.eitco.mavenizer.analyze.jar.PostAnalyzer;
 
 public class JarAnalyzer {
 	
@@ -40,7 +41,8 @@ public class JarAnalyzer {
 		JAR_FILENAME("Jar-Filename"),
 		POM("Pom"),
 		CLASS_FILEPATH("Class-Filepath"),
-		CLASS_TIMESTAMP("Class-Timestamp");
+		CLASS_TIMESTAMP("Class-Timestamp"),
+		POST("Post-Analysis");
 		
 		public final String displayName;
 		private JarAnalyzerType(String displayName) {
@@ -117,6 +119,7 @@ public class JarAnalyzer {
 	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
 	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
 	private final ClassTimestampAnalyzer timeAnalyzer = new ClassTimestampAnalyzer();
+	private final PostAnalyzer postAnalyzer = new PostAnalyzer();
 	
 	public JarAnalysisResult analyzeOffline(Jar jar, InputStream compressedJarInput) {
 		
@@ -150,6 +153,7 @@ public class JarAnalyzer {
 		pomAnalyzer.analyze(collector.withAnalyzer(pomAnalyzer.getType()), pomFiles);
 		manifestAnalyzer.analyze(collector.withAnalyzer(manifestAnalyzer.getType()), manifest.map(m -> m.manifest));
 		jarNameAnalyzer.analyze(collector.withAnalyzer(jarNameAnalyzer.getType()), jar.name);
+		postAnalyzer.analyze(collector.withAnalyzer(postAnalyzer.getType()), collected); // post analyzer must run last
 		
 		var sorted = Map.<MavenUidComponent, List<ValueCandidate>>of(
 				MavenUidComponent.GROUP_ID, new ArrayList<>(),
