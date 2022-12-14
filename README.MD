@@ -1,3 +1,5 @@
+**This repository is currently not maintained!**
+
 # Eitco Mavenizer
 
 Helps you to find or define Maven UIDs for any JAR file and generate corresponding artifact install scripts.
@@ -16,6 +18,10 @@ In interactive mode (`-i`), you can complete missing information if the tool cou
 Use the report file created by the `analyze` command to create an maven install or deploy script. Scripts only contain the jars that could not be found online by the analyzer, since only those are missing from the remote(s) you are using.
 
 Optionally generate a pom containing the artifacts from the report (requires local jars to have been installed).
+
+### Known issues
+
+* Crashes on exit sometimes, leaving behind temporary files/folders - can be deleted manually, otherwise tool will delete them on next run
 
 ### CLI Commands
 
