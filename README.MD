@@ -22,6 +22,7 @@ Optionally generate a pom containing the artifacts from the report (requires loc
 ### Known issues
 
 * Crashes on exit sometimes, leaving behind temporary files/folders - can be deleted manually, otherwise tool will delete them on next run
+* The "foundOnRemote" flag is set to `false` when a conflicting JAR was found online for a user-selected UID, even though the tool affirms the opposite to the user
 
 ### CLI Commands
 

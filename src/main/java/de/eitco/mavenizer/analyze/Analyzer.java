@@ -277,11 +277,12 @@ public class Analyzer {
 		    				// - if the UID he selected could be found online
 		    				// - if the UID he selected might conflict with a non-identical online jar
 		    				var uidCheck = checkedSet.join().iterator().next();
-		    				var foundOnRemote = uidCheck.matchType.isConsideredIdentical();
-		    				if (foundOnRemote) {
+		    				var foundIdentical = uidCheck.matchType.isConsideredIdentical();
+		    				var foundNonIdentical = uidCheck.matchType.equals(OnlineMatch.FOUND_NO_MATCH);
+		    				if (foundIdentical) {
 		    					System.out.println();
 		    					System.out.println("  Found identical JAR online!");
-		    				} else if (uidCheck.matchType.equals(OnlineMatch.FOUND_NO_MATCH)) {
+		    				} else if (foundNonIdentical) {
 		    					System.out.println();
 		    					System.out.println("  WARNING!!!");
 		    					cli.println("  Found non-identical JAR with same UID online!", LOG::warn);
@@ -290,6 +291,7 @@ public class Analyzer {
 			    					cli.println("  " + uidCheck.url.get(), LOG::warn);
 		    					}
 		    				}
+		    				var foundOnRemote = foundIdentical || foundNonIdentical;
 	    					selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get()));
 		    				
 		    			} else {
