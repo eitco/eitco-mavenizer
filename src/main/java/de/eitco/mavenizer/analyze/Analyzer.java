@@ -281,15 +281,18 @@ public class Analyzer {
 		    				var foundNonIdentical = uidCheck.matchType.equals(OnlineMatch.FOUND_NO_MATCH);
 		    				if (foundIdentical) {
 		    					System.out.println();
-		    					System.out.println("  Found identical JAR online!");
+		    					System.out.println("  CONFLICT-CHECK: Ok, found identical JAR online.");
 		    				} else if (foundNonIdentical) {
 		    					System.out.println();
-		    					System.out.println("  WARNING!!!");
+		    					System.out.println("  CONFLICT-CHECK: WARNING!!!");
 		    					cli.println("  Found non-identical JAR with same UID online!", LOG::warn);
 		    					cli.println("  Nevertheless the JAR's 'foundOnRemote' flag will be set to `true` to prevent it from being installed/deployed!", LOG::warn);
 		    					if (uidCheck.url.isPresent()) {
 			    					cli.println("  " + uidCheck.url.get(), LOG::warn);
 		    					}
+		    				} else {
+		    					System.out.println();
+		    					System.out.println("  CONFLICT-CHECK: Ok, found no conflicting JARs online.");
 		    				}
 		    				var foundOnRemote = foundIdentical || foundNonIdentical;
 	    					selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get()));
