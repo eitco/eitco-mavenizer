@@ -1,0 +1,16 @@
+name: deploy commits
+on:
+  push: { }
+  pull_request: { }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: eitco/maven-deploy@0.0.2
+        with:
+          gpg-private-key: ${{ secrets.ARTIFACT_SIGNING_GPG_PRIVATE_KEY }}
+          gpg-key-name: ${{ secrets.ARTIFACT_SIGNING_GPG_KEY_NAME }}
+          gpg-passphrase: ${{ secrets.ARTIFACT_SIGNING_GPG_PRIVATE_KEY_PASSWORD }}
+          deploy-user: ${{ secrets.DEPLOY_USER_GITHUB_PACKAGES }}
+          deploy-password: ${{ secrets.DEPLOY_TOKEN_GITHUB_PACKAGES }}

@@ -114,6 +114,12 @@ buildNumber.properties
 
 # End of https://www.toptal.com/developers/gitignore/api/eclipse,java,maven
 
+# IntelliJ project files
+!/.idea
+/.idea/*
+!/.idea/runConfigurations
+*.iml
+
 ##########################
 # Custom
 ##########################

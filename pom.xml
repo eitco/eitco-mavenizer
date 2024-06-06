@@ -2,9 +2,30 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>de.eitco</groupId>
+
+	<parent>
+		<groupId>de.eitco</groupId>
+		<artifactId>eitco-oss-parent</artifactId>
+		<version>0.0.6</version>
+	</parent>
+
+	<groupId>de.eitco.mavenizer</groupId>
 	<artifactId>eitco-mavenizer</artifactId>
 	<version>1.0.1-SNAPSHOT</version>
+
+	<developers>
+		<developer>
+			<name>Jan Mothes</name>
+			<email>jmothes@eitco.de</email>
+		</developer>
+	</developers>
+	<url>https://github.com/eitco/eitco-mavenizer</url>
+
+	<scm>
+		<url>https://github.com/eitco/eitco-mavenizer.git</url>
+		<connection>scm:git:https://github.com/eitco/eitco-mavenizer.git</connection>
+		<developerConnection>scm:git:https://github.com/eitco/eitco-mavenizer.git</developerConnection>
+	</scm>
 
 	<properties>
 		<maven.compiler.target>11</maven.compiler.target>
