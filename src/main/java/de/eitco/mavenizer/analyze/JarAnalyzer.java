@@ -20,6 +20,7 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import de.eitco.mavenizer.Cli;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,14 +114,26 @@ public class JarAnalyzer {
 	// Class specific code begins here.
 	
 	private static final Logger LOG = LoggerFactory.getLogger(JarAnalyzer.class);
-	
-	private final ManifestAnalyzer manifestAnalyzer = new ManifestAnalyzer();
-	private final JarFilenameAnalyzer jarNameAnalyzer = new JarFilenameAnalyzer();
-	private final PomAnalyzer pomAnalyzer = new PomAnalyzer();
-	private final ClassFilepathAnalyzer classAnalyzer = new ClassFilepathAnalyzer();
-	private final ClassTimestampAnalyzer timeAnalyzer = new ClassTimestampAnalyzer();
-	private final PostAnalyzer postAnalyzer = new PostAnalyzer();
-	
+
+	private final Cli cli;
+
+	private final ManifestAnalyzer manifestAnalyzer;
+	private final JarFilenameAnalyzer jarNameAnalyzer;
+	private final PomAnalyzer pomAnalyzer;
+	private final ClassFilepathAnalyzer classAnalyzer;
+	private final ClassTimestampAnalyzer timeAnalyzer;
+	private final PostAnalyzer postAnalyzer;
+
+	public JarAnalyzer(Cli cli) {
+		this.cli = cli;
+		manifestAnalyzer = new ManifestAnalyzer();
+		jarNameAnalyzer = new JarFilenameAnalyzer();
+		pomAnalyzer = new PomAnalyzer();
+		classAnalyzer = new ClassFilepathAnalyzer(cli);
+		timeAnalyzer = new ClassTimestampAnalyzer();
+		postAnalyzer = new PostAnalyzer();
+	}
+
 	public JarAnalysisResult analyzeOffline(Jar jar, InputStream compressedJarInput) {
 		
 		List<FileBuffer> pomFiles = new ArrayList<>(2);

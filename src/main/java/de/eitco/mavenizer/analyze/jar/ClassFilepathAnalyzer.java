@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
+import de.eitco.mavenizer.Cli;
 import de.eitco.mavenizer.MavenUid.MavenUidComponent;
 import de.eitco.mavenizer.StringUtil;
 import de.eitco.mavenizer.Util;
@@ -18,7 +19,12 @@ import de.eitco.mavenizer.analyze.JarAnalyzer.JarEntry;
 import de.eitco.mavenizer.analyze.JarAnalyzer.ValueCandidateCollector;
 
 public class ClassFilepathAnalyzer {
-	
+
+	private final Cli cli;
+	public ClassFilepathAnalyzer(Cli cli) {
+		this.cli = cli;
+	}
+
 	public static final class FolderStats {
 		public final Path path;
 		public final int deepClassCount;
@@ -78,7 +84,7 @@ public class ClassFilepathAnalyzer {
 		}
 		
 		public void print(int padding) {
-			System.out.println(" ".repeat(padding) + folderName + ": " + classCount);
+			cli.println(" ".repeat(padding) + folderName + ": " + classCount);
 			if (children != null) {
 				for (FolderNode child : children.values()) {
 					child.print(padding + 2);

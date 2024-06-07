@@ -3,7 +3,6 @@ package de.eitco.mavenizer.generate;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -12,48 +11,32 @@ import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 
 import de.eitco.mavenizer.Util;
-import de.eitco.mavenizer.Cli.ResettableCommand;
 import de.eitco.mavenizer.generate.Generator.ScriptType;
 
 @Parameters(commandDescription = "Generate install script or pom.xml from report file created by analyzer.")
-public class GeneratorArgs implements ResettableCommand {
+public class GeneratorArgs {
 	
 	@Parameter(order = 10, description = "<path(s) to report file(s) or parent folder(s)>", required = true)
-	public List<String> reportFiles;
+	public List<String> reportFiles = null;
 	
 	@Parameter(order = 15, names = { "-scriptCommand" , "-c" }, description = "Command executed for each jar. Additional arguments can be included.")
-	String scriptCommand;
+	String scriptCommand = "mvn install:install-file";
 	
 	@Parameter(order = 20, names = "-noScript", description = "Disable install script generation.")
-	boolean noScript;
+	boolean noScript = false;
 	
 	@Parameter(order = 30, names = "-scriptType", description = "Which script language(s) to generate. Currently supports only 'ps1' (powershell).")
-	public Set<String> scriptTypes;
+	public Set<String> scriptTypes = Set.of(ScriptType.POWERSHELL.fileExtension);
 	
 	@Parameter(order = 40, names = "-scriptFile", description = "Name of install script output file (without file extension).")
-	String scriptFile;
+	String scriptFile = "eitco-mavenizer-install";
 	
 	@Parameter(order = 50, names = "-pom", description = "Enable generation of pom.xml with dependencies from report.")
-	boolean pom;
+	boolean pom = false;
 	
 	@Parameter(order = 60, names = "-pomFile", description = "Only if -pom is enabled: Name of pom output file.")
-	String pomFile;
-	
-	public GeneratorArgs() {
-		setDefaults();
-	}
+	String pomFile = "eitco-mavenizer-pom.xml";
 
-	@Override
-	public void setDefaults() {
-		reportFiles = null;
-		scriptCommand = "mvn install:install-file";
-		noScript = false;
-		scriptTypes = new HashSet<>();
-		scriptTypes.add(ScriptType.POWERSHELL.fileExtension);
-		scriptFile = "eitco-mavenizer-install";
-		pom = false;
-		pomFile = "eitco-mavenizer-pom.xml";
-	}
 	
 	public Optional<String> validateMain() {
 		for (var reportFile : reportFiles) {

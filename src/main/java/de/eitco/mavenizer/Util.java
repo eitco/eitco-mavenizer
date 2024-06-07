@@ -32,7 +32,26 @@ public class Util {
 	private Util() {}
 	
 	public static final Path CURRENT_DIR = Paths.get(".");
-	
+
+	public static boolean validateArgs(Cli cli, List<Optional<String>> validators) {
+		var errors = validators.stream()
+				.flatMap(Optional::stream)
+				.collect(Collectors.toList());
+		if (errors.isEmpty()) {
+			return true;
+		} else {
+			if (errors.size() == 1) {
+				cli.println("Argument error: " + errors.get(0));
+			} else {
+				cli.println("Argument errors:");
+				for (var error : errors) {
+					cli.println("    " + error);
+				}
+			}
+			return false;
+		}
+	}
+
 	public static Optional<String> validateFileCanBeCreated(String pathString) {
 		Path path = Paths.get(pathString);
 		Path dir = path.toAbsolutePath().getParent();

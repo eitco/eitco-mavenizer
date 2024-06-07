@@ -9,9 +9,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import de.eitco.mavenizer.analyze.ConsolePrinter;
+import de.eitco.mavenizer.analyze.JarAnalyzer;
+import de.eitco.mavenizer.analyze.OnlineAnalyzer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,23 +49,29 @@ public class Generator {
 	private static final String POWERSHELL_EXIT_ON_MVN_ERROR_COMMAND = "if (-not $?) {exit 1}";
 	
 	private final GeneratorArgs args = new GeneratorArgs();
-	
-	public void addCommand(Cli cli) {
-		cli.addCommand(COMMAND_NAME, args);
+	private final Cli cli;
+
+	public Generator(Cli cli) {
+		this.cli = cli;
 	}
 	
-	public void runGenerator(Cli cli) {
+	public void addCommand(BiConsumer<String, Object> addCommand) {
+		addCommand.accept(COMMAND_NAME, args);
+	}
+	
+	public void runGenerator() {
+
+		var validators = List.of(
+				args.validateMain(),
+				args.validateScriptTypes(),
+				args.validateScriptFile(),
+				args.validatePomFile()
+		);
+		if (!Util.validateArgs(cli, validators)) {
+			return;
+		}
 		
-		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
-			return List.of(
-					args.validateMain(),
-					args.validateScriptTypes(),
-					args.validateScriptFile(),
-					args.validatePomFile()
-				);
-		});
-		
-		LOG.info("Generator started with args: " + Arrays.toString(cli.getLastArgs()));
+		LOG.info("Generator started.");
 		
 		List<Path> reportPaths = Util.getFiles(args.reportFiles, path -> path.getFileName().toString().toLowerCase().endsWith(".json"));
 		
@@ -101,19 +111,19 @@ public class Generator {
 			}
 		}
 		if (!areAllJarFilesValid) {
-			System.out.println("Warning(s) above can be ignored, but will cause generated install script to contain incorrect file paths!");
+			cli.println("Warning(s) above can be ignored, but will cause generated install script to contain incorrect file paths!");
 			cli.askUserToContinue("    ");
 		}
 		
 		// TODO maybe check again with MavenRepoChecker
-		System.out.println("The following jars were found online according to their reports.");
-		System.out.println("Therefore they will be excluded from install script(s).");
+		cli.println("The following jars were found online according to their reports.");
+		cli.println("Therefore they will be excluded from install script(s).");
 		jarReports.stream()
 				.filter(jar -> jar.foundOnRemote)
 				.forEach(jar -> {
-					System.out.println("    " + StringUtil.rightPad(jar.filename, 25) + "  ( " + jar.dir + " )");
+					cli.println("    " + StringUtil.rightPad(jar.filename, 25) + "  ( " + jar.dir + " )");
 				});
-		System.out.println();
+		cli.println();
 		
 		if (!args.noScript) {
 			for (var scriptType : args.scriptTypes) {

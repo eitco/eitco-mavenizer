@@ -10,13 +10,13 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -111,26 +111,34 @@ public class Analyzer {
 	public static final String COMMAND_NAME = "analyze";
 	
 	private final AnalysisArgs args = new AnalysisArgs();
-	private final JarAnalyzer jarAnalyzer = new JarAnalyzer();
-	private final ConsolePrinter printer = new ConsolePrinter();
+	private final Cli cli;
+	private final JarAnalyzer jarAnalyzer;
+	private final ConsolePrinter printer;
 	
 	private OnlineAnalyzer online = null;
-	
-	public void addCommand(Cli cli) {
-		cli.addCommand(COMMAND_NAME, args);
+
+	public Analyzer(Cli cli) {
+		this.cli = cli;
+		this.jarAnalyzer = new JarAnalyzer(cli);
+		this.printer = new ConsolePrinter(cli);
+	}
+
+	public void addCommand(BiConsumer<String, Object> addCommand) {
+		addCommand.accept(COMMAND_NAME, args);
 	}
 	
-	public void runAnalysis(Cli cli) {
+	public void runAnalysis() {
+
+		var validators = List.of(
+				args.validateJars(),
+				args.validateReportFile(),
+				args.validateStartNumber()
+		);
+		if (!Util.validateArgs(cli, validators)) {
+			return;
+		}
 		
-		cli.validateArgsOrRetry(COMMAND_NAME, () -> {
-			return List.of(
-					args.validateJars(),
-					args.validateReportFile(),
-					args.validateStartNumber()
-				);
-		});
-		
-		LOG.info("Analyzer started with args: " + Arrays.toString(cli.getLastArgs()));
+		LOG.info("Analyzer started.");
 		
 		if (args.interactive) {
 			cli.println("Interactive mode enabled.", LOG::info);
@@ -163,7 +171,7 @@ public class Analyzer {
 	    	}
 	    	
 			LOG.debug("Analyzing Jar: '" + jarPath.toString() + "'");
-			System.out.print(StringUtil.RETURN_LINE + "Offline-Analysis: Jar " + (jarIndex + 1) + "/" + jarCount);
+			cli.println(StringUtil.RETURN_LINE + "Offline-Analysis: Jar " + (jarIndex + 1) + "/" + jarCount);
 			
 			try (var fin = new FileInputStream(jarPath.toFile())) {
 				
@@ -225,10 +233,10 @@ public class Analyzer {
 			}
 	    }
 	    
-		System.out.println();// end System.out.print with StringUtil.RETURN_LINE
+		cli.println();// end System.out.print with StringUtil.RETURN_LINE
 		
 	    var onlineCheckInitialized = false;
-	    System.out.println("Online-Check initializing...");
+	    cli.println("Online-Check initializing...");
 	    
 	    var count = 1;
 	    
@@ -248,9 +256,9 @@ public class Analyzer {
 		    	jarAnalysis.onlineCompletionWithVersion.join();
 		    	jarAnalysis.onlineCompletionNoVersion.join();
 	    		
-	    		System.out.println("Online-Check initialized!");
-	    		System.out.println("Online-Check started.");
-	    		System.out.println();
+	    		cli.println("Online-Check initialized!");
+	    		cli.println("Online-Check started.");
+	    		cli.println();
 	    	}
 	    	
 	    	var jarDirForReport = Paths.get(".").resolve(Util.CURRENT_DIR.toAbsolutePath().relativize(Paths.get(jar.dir))).toString();
@@ -258,7 +266,7 @@ public class Analyzer {
 	    	var autoSelected = autoSelectCandidate(jarAnalysis);
 	    	Optional<JarReport> selected = autoSelected.map(uid -> new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, true, uid.fullUid));
 	    	
-	    	System.out.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
+	    	cli.println(jarAnalysis.jar.name + " (" + count + "/" + waiting.size() + ")");
 	    	printer.printResults(jarAnalysis, autoSelected, args.forceDetailedOutput, args.offline);
 	    	
 	    	if (selected.isEmpty()) {
@@ -280,19 +288,19 @@ public class Analyzer {
 		    				var foundIdentical = uidCheck.matchType.isConsideredIdentical();
 		    				var foundNonIdentical = uidCheck.matchType.equals(OnlineMatch.FOUND_NO_MATCH);
 		    				if (foundIdentical) {
-		    					System.out.println();
-		    					System.out.println("  CONFLICT-CHECK: Ok, found identical JAR online.");
+		    					cli.println();
+		    					cli.println("  CONFLICT-CHECK: Ok, found identical JAR online.");
 		    				} else if (foundNonIdentical) {
-		    					System.out.println();
-		    					System.out.println("  CONFLICT-CHECK: WARNING!!!");
+		    					cli.println();
+		    					cli.println("  CONFLICT-CHECK: WARNING!!!");
 		    					cli.println("  Found non-identical JAR with same UID online!", LOG::warn);
 		    					cli.println("  Nevertheless the JAR's 'foundOnRemote' flag will be set to `true` to prevent it from being installed/deployed!", LOG::warn);
 		    					if (uidCheck.url.isPresent()) {
 			    					cli.println("  " + uidCheck.url.get(), LOG::warn);
 		    					}
 		    				} else {
-		    					System.out.println();
-		    					System.out.println("  CONFLICT-CHECK: Ok, found no conflicting JARs online.");
+		    					cli.println();
+		    					cli.println("  CONFLICT-CHECK: Ok, found no conflicting JARs online.");
 		    				}
 		    				var foundOnRemote = foundIdentical || foundNonIdentical;
 	    					selected = Optional.of(new JarReport(jar.name, jarDirForReport, jar.hashes.jarSha256, foundOnRemote, userSelectedUid.get()));
@@ -385,12 +393,12 @@ public class Analyzer {
 			return shouldBeProposed ? Optional.of(value) : Optional.empty();
 		};
 		
-		System.out.println(pad + "Please complete missing groupId/artifactId/version info for this jar.");
-		System.out.println(pad + "The following commands are always available:");
-		System.out.println(optionPad + "exit! <exit>");
-		System.out.println(optionPad + "s!    <skip this jar>");
+		cli.println(pad + "Please complete missing groupId/artifactId/version info for this jar.");
+		cli.println(pad + "The following commands are always available:");
+		cli.println(optionPad + "exit! <exit>");
+		cli.println(optionPad + "s!    <skip this jar>");
 		if (manifest.isPresent()) {
-			System.out.println(optionPad + "m!    <show manifest>");
+			cli.println(optionPad + "m!    <show manifest>");
 		}
 		
 		boolean jarSkipped = false;
@@ -421,11 +429,11 @@ public class Analyzer {
 	    	}
 			
 			// print proposals
-			System.out.println();
-			System.out.println(pad + "Enter " + component.xmlTagName + " directly" + (proposals.isEmpty() ? "" : " or select from") + ":");
+			cli.println();
+			cli.println(pad + "Enter " + component.xmlTagName + " directly" + (proposals.isEmpty() ? "" : " or select from") + ":");
 			var index = 1;
 			for (String proposal : proposals) {
-				System.out.println(optionPad + index + "! " + proposal);
+				cli.println(optionPad + index + "! " + proposal);
 				index++;
 			}
 			
@@ -433,7 +441,7 @@ public class Analyzer {
 			boolean hasCorrectInput = false;
 			String selected = null;
 			do {
-				String inputString = cli.nextLine().trim();
+				String inputString = cli.readLn().trim();
 				try {
 					if (inputString.endsWith("!")) {
 						if (inputString.equals("exit!")) {
@@ -443,16 +451,16 @@ public class Analyzer {
 							jarSkipped = true;
 							break;
 						} else if (manifest.isPresent() && inputString.equals("m!")) {
-							System.out.println();
-							System.out.println(manifest.get().fileAsString);
-							System.out.println();
+							cli.println();
+							cli.println(manifest.get().fileAsString);
+							cli.println();
 							cli.askUserToContinue(pad, "Press Enter to continue choosing a " + component.xmlTagName + "..." );
 						} else {
 							var selectedIndex = Integer.parseInt(inputString.substring(0, inputString.length() - 1));
 							if (selectedIndex >= 1 && selectedIndex <= proposals.size()) {
 								selected = List.copyOf(proposals).get(selectedIndex - 1);
 							} else {
-								System.out.println(pad + "Given selection is not in valid range 1 - " + proposals.size() + "!");
+								cli.println(pad + "Given selection is not in valid range 1 - " + proposals.size() + "!");
 							}
 						}
 					} else {
@@ -463,15 +471,15 @@ public class Analyzer {
 				}
 				if (selected != null) {
 					if (selected.isEmpty()) {
-						System.out.println(pad + "Empty! Please enter the value directly or enter '<number>!' to select a proposal from above.");
+						cli.println(pad + "Empty! Please enter the value directly or enter '<number>!' to select a proposal from above.");
 					} else {
 						Pattern pattern = Regex.getPatternForUserInputValidation(component);
 						Matcher matcher = pattern.matcher(selected);
 						if (matcher.find()) {
 							hasCorrectInput = true;
 						} else {
-							System.out.println(pad + "Given value does not seem to be a valid " + component.xmlTagName + "!");
-							System.out.println(pad + "Value must match regex: " + pattern.toString());
+							cli.println(pad + "Given value does not seem to be a valid " + component.xmlTagName + "!");
+							cli.println(pad + "Value must match regex: " + pattern.toString());
 						}
 					}
 				}
@@ -485,13 +493,13 @@ public class Analyzer {
 		
 		Optional<MavenUid> result;
 		if (jarSkipped || exit) {
-			System.out.println(pad + "Skipped! Jar '" + jarAnalysis.jar.name + "' will not appear in result report!");
+			cli.println(pad + "Skipped! Jar '" + jarAnalysis.jar.name + "' will not appear in result report!");
 			result = Optional.empty();
 		} else {
 			var selectedUid = new MavenUid(selectedValues.get(0), selectedValues.get(1), selectedValues.get(2));
-			System.out.println();
-			System.out.println(pad + "Final values: " + selectedUid);
-			System.out.println(pad + "Note that any mistakes can be fixed manually in the report file.");
+			cli.println();
+			cli.println(pad + "Final values: " + selectedUid);
+			cli.println(pad + "Note that any mistakes can be fixed manually in the report file.");
 			result = Optional.of(selectedUid);
 		}
 		
