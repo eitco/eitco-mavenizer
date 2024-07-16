@@ -53,10 +53,12 @@ public class JarAnalyzer {
 	
 	public static class JarEntry {
 		public final Path path;// relative to jar root
-		public final FileTime timestamp;
-		public JarEntry(Path path, FileTime createdAt) {
+		public final FileTime timestampCreatedAt;
+		public final FileTime timestampLastModifiedAt;
+		public JarEntry(Path path, FileTime createdAt, FileTime lastModifiedAt) {
 			this.path = path;
-			this.timestamp = createdAt;
+			this.timestampCreatedAt = createdAt;
+			this.timestampLastModifiedAt = lastModifiedAt;
 		}
 	}
 	
@@ -207,11 +209,7 @@ public class JarAnalyzer {
 				}
 			}
 			if (filenameLower.endsWith(".class")) {
-				var timestamp = entry.getCreationTime();
-				if (timestamp == null) {
-					timestamp = entry.getLastModifiedTime();
-				}
-				onClass.accept(new JarEntry(entryPath, timestamp));
+				onClass.accept(new JarEntry(entryPath, entry.getCreationTime(), entry.getLastModifiedTime()));
 			}
 			if (Paths.get("META-INF/MANIFEST.MF").equals(entryPath)) {
 				try {
